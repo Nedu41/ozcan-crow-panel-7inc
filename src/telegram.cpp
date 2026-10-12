@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <Preferences.h>
 #include "config.h"
 #if __has_include("secrets.h")
 #include "secrets.h"  // TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (gitignore'da)
@@ -10,6 +11,31 @@
 #define TELEGRAM_BOT_TOKEN ""
 #define TELEGRAM_CHAT_ID ""
 #endif
+
+// =================== Ayar: NVS "tg" (derleme zamani secrets.h yalniz varsayilan) ===================
+static String tgToken, tgChat;
+static bool tgLoaded = false;
+static void tgLoad() {
+  if (tgLoaded) return;
+  Preferences p;
+  p.begin("tg", false);
+  tgToken = p.getString("token", TELEGRAM_BOT_TOKEN);
+  tgChat = p.getString("chat", TELEGRAM_CHAT_ID);
+  p.end();
+  tgLoaded = true;
+}
+void telegramSetConfig(const String& token, const String& chat) {
+  Preferences p;
+  p.begin("tg", false);
+  p.putString("token", token);
+  p.putString("chat", chat);
+  p.end();
+  tgToken = token;
+  tgChat = chat;
+  tgLoaded = true;
+}
+String telegramChatId() { tgLoad(); return tgChat; }
+bool telegramConfigured() { tgLoad(); return tgToken.length() > 10 && tgChat.length() > 0; }
 
 // =================== URL encode helper ===================
 String urlEncode(const String& str) {
@@ -38,7 +64,7 @@ void sendTelegramAlert(const String& message) {
     return;
   }
 
-  if (!*TELEGRAM_BOT_TOKEN || !*TELEGRAM_CHAT_ID) {
+  if (!telegramConfigured()) {
     Serial.println("[Telegram] Token/chat id girilmemis, gonderilmedi.");
     return;
   }
@@ -68,10 +94,10 @@ void sendTelegramAlert(const String& message) {
 
   // URL'yi oluştur - Markdown formatını kullanıyoruz.
   String encodedMsg = urlEncode(message);
-  String url = "https://api.telegram.org/bot" + String(TELEGRAM_BOT_TOKEN) + "/sendMessage?chat_id=" + String(TELEGRAM_CHAT_ID) + "&text=" + encodedMsg + "&parse_mode=Markdown&disable_web_page_preview=true";
+  String url = "https://api.telegram.org/bot" + tgToken + "/sendMessage?chat_id=" + tgChat + "&text=" + encodedMsg + "&parse_mode=Markdown&disable_web_page_preview=true";
 
   Serial.printf("Telegram URL uzunluğu: %d\n", url.length());
-  Serial.printf("Chat ID: %s\n", TELEGRAM_CHAT_ID);
+  Serial.printf("Chat ID: %s\n", tgChat.c_str());
 
   // Bağlantıyı başlat
   if (http.begin(client, url)) {

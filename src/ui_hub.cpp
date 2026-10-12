@@ -10,6 +10,8 @@
 #include "config.h"
 #include "devices.h"
 #include "events.h"
+#include "storage.h"
+#include "telegram.h"
 #include "ledpanel.h"
 #include "ui.h"
 #include "ui_common.h"
@@ -432,6 +434,43 @@ static void doWipeWifi() {
   ESP.restart();
 }
 static void onSetWipe(lv_event_t*) { uiConfirm("Kayıtlı tüm WiFi ağları silinsin mi? Cihaz yeniden başlar.", doWipeWifi); }
+// ---- Telegram (token + chat id) ve hava konumu: ekrandan girilir, NVS/LittleFS'te saklanır
+static String tmpTok;
+static void tgTestTask(void*) {
+  sendTelegramAlert("Telegram bağlantısı kuruldu (CrowPanel HUB).");
+  vTaskDelete(nullptr);
+}
+static void onTgChat(const char* t) {
+  telegramSetConfig(tmpTok, String(t));
+  tmpTok = "";
+  xTaskCreatePinnedToCore(tgTestTask, "TgTest", 8192, nullptr, 1, nullptr, 0);
+}
+static void onTgTok(const char* t) {
+  tmpTok = t;
+  uiPrompt("Telegram sohbet (chat) no", telegramChatId().c_str(), false, onTgChat);
+}
+static void onSetTg(lv_event_t*) { uiPrompt("Telegram bot token", "", false, onTgTok); }
+
+static String tmpCity;
+static void onDistrict(const char* t) {
+  if (takeMutex(weatherMutex)) {
+    WEATHER_CONFIG_DOC["city"] = tmpCity;
+    WEATHER_CONFIG_DOC["district"] = String(t);
+    WEATHER_CONFIG_DOC["neighbourhood"] = "";
+    WEATHER_CONFIG_DOC["latitude"] = "";   // boş: sonraki hava turunda adresten koordinat bulunur
+    WEATHER_CONFIG_DOC["longitude"] = "";
+    WEATHER_CONFIG_DOC["city_name"] = "";
+    saveWeatherConfig();
+    xSemaphoreGive(weatherMutex);
+  }
+  weatherRefreshRequested = true;
+}
+static void onCity(const char* t) {
+  tmpCity = t;
+  uiPrompt("İlçe (isteğe bağlı)", "", false, onDistrict);
+}
+static void onSetLoc(lv_event_t*) { uiPrompt("Şehir (hava durumu konumu)", "", false, onCity); }
+
 static void onBl(lv_event_t* e) {
   int v = lv_slider_get_value(lv_event_get_target_obj(e));
   char b[32];
@@ -463,6 +502,8 @@ static void buildSet() {
   lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
   uiBtn(r, "WiFi ayarı", false, onSetWifi);
   uiBtn(r, "Ekranı döndür", false, onSetRot);
+  uiBtn(r, "Hava konumu", false, onSetLoc);
+  uiBtn(r, "Telegram", false, onSetTg);
   uiBtn(r, "Yeniden başlat", false, onSetRestart);
   uiBtn(r, "WiFi'leri sil", false, onSetWipe);
 }
@@ -474,9 +515,9 @@ static void tickSet() {
   uint32_t up = millis() / 1000;
   char b[256];
   snprintf(b, sizeof(b),
-           "Ağ: %s   Sinyal: %d dBm\nIP: %s   Adres: %s.local\nSürüm: %s\nÇalışma: %lu sa %lu dk   Bellek: %u KB boş",
+           "Ağ: %s   Sinyal: %d dBm\nIP: %s   Adres: %s.local\nSürüm: %s   Telegram: %s\nÇalışma: %lu sa %lu dk   Bellek: %u KB boş",
            WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.localIP().toString().c_str(), "crowhub", FW_VERSION,
-           (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60), (unsigned)(ESP.getFreeHeap() / 1024));
+           telegramConfigured() ? "açık" : "kapalı", (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60), (unsigned)(ESP.getFreeHeap() / 1024));
   uiSetText(setInfo, b);
 }
 

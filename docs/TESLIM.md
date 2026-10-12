@@ -6,4 +6,4 @@
 4. Kartı tamamen sil ve temiz imajı yaz: `python -m esptool --port COMx erase_flash` sonra `pio run -t upload`. (NVS: WiFi dışı ayarlar, LittleFS: `/wifi_nets.json`, cihazlar, hava ayarı silinir.)
 5. İlk açılış denemesi: WiFi kurulum ekranı gelmeli, ağ seç → şifre → IP görünmeli; yeniden başlatınca kendiliğinden bağlanmalı.
 6. Ayar sayfasında "WiFi'leri sil" ve web arayüzünde `/reset_wifi` ile fabrika WiFi sıfırlaması çalışıyor.
-7. Özcan abiye söylenecekler: cihaz ekleme web arayüzünden (`http://crowhub.local` ya da Ayar sayfasındaki IP), hava konumu web > Hava ayarları, Telegram isterse token girişi (şu an derleme zamanında; ekrandan/web'den girme henüz yok).
+7. Özcan abiye söylenecekler: cihaz ekleme web arayüzünden (`http://crowhub.local` ya da Ayar sayfasındaki IP), hava konumu web > Hava ayarları, Telegram isterse Ayar > Telegram (bot token + chat no), hava konumu için Ayar > Hava konumu.

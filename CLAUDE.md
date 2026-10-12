@@ -35,4 +35,5 @@ Doğrulanmamış: LedPanel istemcisi (panel ağda yokken yazıldı), lamba düğ
 Geliştirme araçları: `-DDEV_SCREENSHOT` (platformio.ini) → `GET /screen.bmp`, `/dev/tab?i=`, `/dev/rot`. **Teslimde kapatılır** (bkz. `docs/TESLIM.md`).
 Flash: uygulama ~1,82 MB / 1,97 MB OTA yuvası (%92) — yeni özellik eklerken boyutu izle.
 Mimari: `src/ui.cpp` (sürücü+WiFi akışı+metin/onay pencereleri), `src/ui_hub.cpp` (sayfalar), `src/ledpanel.cpp` (istemci görevi), `src/data_task.cpp` (haber/hava/deprem), kalanı ev-lamba'dan taşındı (aynı API, aynı web sayfası `include/relay_webpage_multi.h`).
+Telegram bot/chat ve hava konumu Ayar sayfasından girilir (NVS / hava ayarı dosyası).
 Sıradaki: kullanıcı cevapları (aşağıdaki sorular), LedPanel gerçek test, lamba ekleme testi, Telegram/hava konumunu ekrandan girme, yapay zeka efekti sayfası, web arayüzüne LedPanel bölümü. Ardından Nextion projesi (`D:\Kodlar\ozcan-NX4832k035_011`).
