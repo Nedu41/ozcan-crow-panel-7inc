@@ -75,7 +75,8 @@ inline void boardPowerSeq() {
   pcaWrite(0x03, 0x02);  // IO1 giriş
 }
 
-struct Touch { bool down; uint16_t x, y; };
+// fresh: GT911'de yeni veri var (basıldı ya da bırakıldı). fresh=false iken önceki durum geçerli.
+struct Touch { bool fresh, down; uint16_t x, y; };
 
 // GT911 ham koordinatı -> ekran yönüne göre koordinat.
 
@@ -96,7 +97,7 @@ inline void touchToScreen(uint16_t rx, uint16_t ry, uint8_t rot, int& x, int& y)
 
 // GT911 poll (INT/RST kullanılmaz). Ham koordinat döner.
 inline Touch touchRead() {
-  Touch t{false, 0, 0};
+  Touch t{false, false, 0, 0};
   auto rd = [](uint16_t reg, uint8_t* b, uint8_t n) {
     Wire.beginTransmission(ADDR_GT911);
     Wire.write(reg >> 8);
@@ -108,6 +109,7 @@ inline Touch touchRead() {
   };
   uint8_t st;
   if (!rd(0x814E, &st, 1) || !(st & 0x80)) return t;
+  t.fresh = true;
   if ((st & 0x0F) > 0) {
     uint8_t p[8];
     if (rd(0x814F, p, 8)) { t.down = true; t.x = p[1] | (p[2] << 8); t.y = p[3] | (p[4] << 8); }
