@@ -29,5 +29,10 @@ Lamba düğümleri: Özcan abinin evinde olup olmadığı bilinmiyor, ama mutlak
 
 **Gizli bilgiler (Telegram token, API anahtarları, WiFi):** test aşamasında kullanıcının kendi değerleri `src/secrets.h`'ta (gitignore'lu) durabilir. **Teslimden önce hepsi silinir** (secrets.h + cihazdaki kayıtlı WiFi/NVS/LittleFS ayarları temizlenir, flash silinip temiz imaj yazılır); Özcan abi kendi bilgilerini ekrandan girer. Teslim öncesi bunu kullanıcıya hatırlat.
 
-## Durum (2026-10-12)
-Ekran + dokunmatik + yön (yatay/dikey) kartta çalışıyor (`src/board.h`, `src/main.cpp` donanım testi). Port COM3 (CH340). Sıradaki: WiFi kurulum ekranı (dokunmatik klavye), sonra ev-lamba HUB kodunun taşınması (4 MB flash: OTA için bölümleme kararı), sonra arayüz sayfaları. Ardından 3,5" Nextion için ayrı proje klasörü.
+## Durum (2026-10-12, gece)
+Çalışan (kartta doğrulandı): ekran + dokunmatik + yatay/dikey, dokunmatik WiFi kurulumu (kayıtlı ağ listesi `/wifi_nets.json`, açılışta sırayla denenir), ev-lamba HUB arka ucu (web arayüzü `http://<ip>/`, cihaz yönetimi, hava, haber, deprem, zamanlayıcı, Telegram, MQTT, OTA), LVGL sayfaları Ana/Lambalar/LedPanel/Ayar, **OTA** (`pio run -t upload --upload-port <ip>`). mDNS adı `crowhub.local` (ev-lamba'nın `merkezihub.local`'ı ile çakışmasın diye). Seri port USB girişine göre değişir (COM3/COM14…).
+Doğrulanmamış: LedPanel istemcisi (panel ağda yokken yazıldı), lamba düğmeleriyle röle kontrolü (cihaz eklenmedi), arka ışık PWM kısma, 24 MHz ekran saati.
+Geliştirme araçları: `-DDEV_SCREENSHOT` (platformio.ini) → `GET /screen.bmp`, `/dev/tab?i=`, `/dev/rot`. **Teslimde kapatılır** (bkz. `docs/TESLIM.md`).
+Flash: uygulama ~1,82 MB / 1,97 MB OTA yuvası (%92) — yeni özellik eklerken boyutu izle.
+Mimari: `src/ui.cpp` (sürücü+WiFi akışı+metin/onay pencereleri), `src/ui_hub.cpp` (sayfalar), `src/ledpanel.cpp` (istemci görevi), `src/data_task.cpp` (haber/hava/deprem), kalanı ev-lamba'dan taşındı (aynı API, aynı web sayfası `include/relay_webpage_multi.h`).
+Sıradaki: kullanıcı cevapları (aşağıdaki sorular), LedPanel gerçek test, lamba ekleme testi, Telegram/hava konumunu ekrandan girme, yapay zeka efekti sayfası, web arayüzüne LedPanel bölümü. Ardından Nextion projesi (`D:\Kodlar\ozcan-NX4832k035_011`).
