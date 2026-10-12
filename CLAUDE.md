@@ -19,5 +19,15 @@ Panel IP'si DHCP ile değişir (son görülen 192.168.1.140; mDNS `ledpanel.loca
 - Yapay zeka efekti: PC'de `araclar/ai_koprusu.py` (:8766, anahtar `?k=`); adresi panele kendisi bildirir → `/api/state` içindeki `aibr`. Uçlar: `/uret?prompt=`, `/oynat?ad=`, `/liste`, `/kaydet?ad=`, `/sil?ad=`, `/ayar?hiz=&isik=&fx=&fy=`, `/durdur` (hepsi `&ip=<panel>&k=<anahtar>`).
 - Yerleşik efekt no: 31 Alev, 35 Plazma, 36 Gökkuşağı, 34 Matrix, 37 Yıldızlı gece, 41 Kar, 42 Yağmur, 43 Fırtına, 44 Doğa manzarası, 45 Okyanus, 46 Havai fişek, 47 Radar, 48 Kalp atışı.
 
+## Mimari karar (2026-10-12)
+CrowPanel, `D:\Kodlar\ev-lamba` (Merkezi HUB: ESP01 röle yönetimi, zamanlayıcı, hava, web, OTA, MQTT, Telegram) kodunu devralan **yeni HUB** olur; LedPanel kumandası da aynı cihazda. Eski ILI9341'li ESP32 emekli. ev-lamba'ya dokunma, yalnızca kaynak olarak oku/taşı. İlk sürüm ekranı: hava/saat ana ekranı; lamba ve LedPanel sayfaları sonraki adım.
+
+## Teslim gereksinimi (2026-10-12)
+Cihaz Özcan abiye verilecek; evine götürünce kendi WiFi'sine **kodsuz, bilgisayarsız** bağlanabilmeli. Kurallar: koda gömülü SSID/şifre yok, `secrets.h` içeriği (Telegram vb.) cihaza girmez; WiFi kurulumu dokunmatik ekranda (ağ tara → seç → ekran klavyesiyle şifre); bağlanamazsa otomatik kurulum ekranına dön; kayıtlı ağ kalıcı (NVS/LittleFS); LedPanel/ESP01 adresleri IP ile değil mDNS ile bulunur (IP her evde değişir); hava konumu ayarlanabilir.
+
+Lamba düğümleri: Özcan abinin evinde olup olmadığı bilinmiyor, ama mutlaka cihaz ekleyecek → cihaz ekleme (mDNS tarama + isim verme) ekrandan yapılabilmeli. Test için şimdilik kullanıcının kendi lambaları eklenir. ESP01'lere yeni WiFi dağıtma fikri askıda (bkz. ev-lamba hafızası `project-wifi-provision-idea`).
+
+**Gizli bilgiler (Telegram token, API anahtarları, WiFi):** test aşamasında kullanıcının kendi değerleri `src/secrets.h`'ta (gitignore'lu) durabilir. **Teslimden önce hepsi silinir** (secrets.h + cihazdaki kayıtlı WiFi/NVS/LittleFS ayarları temizlenir, flash silinip temiz imaj yazılır); Özcan abi kendi bilgilerini ekrandan girer. Teslim öncesi bunu kullanıcıya hatırlat.
+
 ## Durum (2026-10-12)
-İskelet oluşturuldu; henüz kod yok. Sıradaki: donanımı teyit et (tam model/revizyon), `docs/DONANIM.md` doldur, ekran+dokunmatik "merhaba" testi, sonra WiFi + LedPanel istemcisi + arayüz.
+Ekran + dokunmatik + yön (yatay/dikey) kartta çalışıyor (`src/board.h`, `src/main.cpp` donanım testi). Port COM3 (CH340). Sıradaki: WiFi kurulum ekranı (dokunmatik klavye), sonra ev-lamba HUB kodunun taşınması (4 MB flash: OTA için bölümleme kararı), sonra arayüz sayfaları. Ardından 3,5" Nextion için ayrı proje klasörü.
