@@ -1,4 +1,5 @@
-// LVGL arayüzü: ekran sürücüsü bağlantısı + WiFi kurulum akışı + ana ekran (yer tutucu)
+// LVGL arayüzü: ekran sürücüsü bağlantısı + WiFi kurulum akışı + yardımcı pencereler.
+// HUB sayfaları (ana, lambalar, LedPanel, ayarlar): ui_hub.cpp
 #include "ui.h"
 
 #include <Preferences.h>
@@ -6,22 +7,14 @@
 #include <lvgl.h>
 
 #include "board.h"
-
-// ---- Tema: koyu/gotik, siyah çerçeve, pastel vurgu. Koyu zemin -> açık yazı, pastel zemin -> koyu yazı ----
-#define C_BG     lv_color_hex(0x14141A)
-#define C_CARD   lv_color_hex(0x1F1F28)
-#define C_BTN    lv_color_hex(0x2C2C38)
-#define C_FRAME  lv_color_hex(0x000000)
-#define C_TEXT   lv_color_hex(0xDADAE4)
-#define C_DIM    lv_color_hex(0x9A9AAE)
-#define C_CYAN   lv_color_hex(0x7FE0DC)
-#define C_ORANGE lv_color_hex(0xFFB27A)
-#define C_GREEN  lv_color_hex(0x8FE0A0)
-#define C_RED    lv_color_hex(0xFF9A9A)
-#define C_ONPASTEL lv_color_hex(0x0E0E14)
+#include "hub.h"
+#include "ui_common.h"
+#include "ui_hub.h"
+#include "wifi_nets.h"
 
 LGFX lcd;
 static uint8_t rot = 0;
+static int backlightPct = 100;
 static lv_display_t* disp;
 
 // ------------------------------------------------------------------ ekran / dokunmatik bağlantısı
@@ -43,28 +36,49 @@ static void touchCb(lv_indev_t*, lv_indev_data_t* d) {
   d->point.y = y;
 }
 
-static void applyRotation(uint8_t r) {
-  rot = r & 3;
+// Arka ışık: GPIO2 (MT9201 EN), PWM. Donanımda PWM ile kısma henüz doğrulanmadı (%100 = sürekli HIGH).
+static void applyBacklight() {
+  int duty = constrain(backlightPct, 10, 100) * 255 / 100;
+  ledcWrite(0, duty);
+}
+
+void uiSetBacklight(int pct) {
+  backlightPct = constrain(pct, 10, 100);
+  applyBacklight();
+  Preferences p;
+  p.begin("ui", false);
+  p.putUChar("bl", backlightPct);
+  p.end();
+}
+int uiGetBacklight() { return backlightPct; }
+bool uiIsLandscape() { return lcd.width() > lcd.height(); }
+
+void uiRotate() {
+  rot = (rot + 1) & 3;
   lcd.setRotation(rot);
   lv_display_set_resolution(disp, lcd.width(), lcd.height());
   Preferences p;
   p.begin("ui", false);
   p.putUChar("rot", rot);
   p.end();
+  hubUiOnRotate();
+  lv_obj_invalidate(lv_screen_active());
 }
 
 void guiInit() {
   Preferences p;
   p.begin("ui", false);
   rot = p.getUChar("rot", 0) & 3;
+  backlightPct = p.getUChar("bl", 100);
   p.end();
 
   boardPowerSeq();
   lcd.init();
   lcd.setRotation(rot);
   lcd.fillScreen(TFT_BLACK);
-  pinMode(PIN_BL, OUTPUT);
-  digitalWrite(PIN_BL, HIGH);
+  ledcSetup(0, 5000, 8);
+  ledcAttachPin(PIN_BL, 0);
+  applyBacklight();
 
   lv_init();
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
@@ -83,41 +97,18 @@ void guiInit() {
 
 void guiLoop() { lv_timer_handler(); }
 
-// ------------------------------------------------------------------ WiFi kayıt
-static String savedSsid, savedPass;
-
-static void loadWifi() {
-  Preferences p;
-  p.begin("wifi", false);
-  savedSsid = p.getString("ssid", "");
-  savedPass = p.getString("pass", "");
-  p.end();
-}
-
-static void saveWifi(const String& s, const String& pw) {
-  Preferences p;
-  p.begin("wifi", false);
-  p.putString("ssid", s);
-  p.putString("pass", pw);
-  p.end();
-  savedSsid = s;
-  savedPass = pw;
-}
-
 // ------------------------------------------------------------------ ekranlar
-extern "C" { extern const lv_font_t noto16, noto20, noto28; }
-
 static lv_obj_t *scrList, *scrPass, *scrBusy, *scrHome;
 static lv_obj_t *listBox, *listInfo;
-static lv_obj_t *passSsid, *passTa, *passMsg, *passKb, *passEye;
-static lv_obj_t *busyLbl, *busyCancel;
-static lv_obj_t *homeInfo;
+static lv_obj_t *passSsid, *passTa, *passMsg, *passKb;
+static lv_obj_t *busyLbl;
 
 enum State { ST_IDLE, ST_SCANNING, ST_CONNECTING };
 static State st = ST_IDLE;
 static uint32_t stSince = 0;
 static String curSsid, curPass;
 static bool connectFromBoot = false;
+static int bootIdx = 0;  // açılışta kayıtlı ağlardan sıradaki
 
 static lv_obj_t* newScreen() {
   lv_obj_t* s = lv_obj_create(nullptr);
@@ -134,46 +125,6 @@ static lv_obj_t* newScreen() {
   return s;
 }
 
-static lv_obj_t* newLabel(lv_obj_t* par, const char* t, const lv_font_t* f, lv_color_t c) {
-  lv_obj_t* l = lv_label_create(par);
-  lv_label_set_text(l, t);
-  lv_obj_set_style_text_font(l, f, 0);
-  lv_obj_set_style_text_color(l, c, 0);
-  return l;
-}
-
-// primary: pastel zemin + koyu yazı; değilse koyu düğme + açık yazı. Çerçeve hep siyah.
-static lv_obj_t* newBtn(lv_obj_t* par, const char* t, bool primary, lv_event_cb_t cb, int w = LV_SIZE_CONTENT) {
-  lv_obj_t* b = lv_button_create(par);
-  lv_obj_set_size(b, w, 56);
-  lv_obj_set_style_radius(b, 10, 0);
-  lv_obj_set_style_bg_color(b, primary ? C_CYAN : C_BTN, 0);
-  lv_obj_set_style_border_color(b, C_FRAME, 0);
-  lv_obj_set_style_border_width(b, 3, 0);
-  lv_obj_set_style_shadow_width(b, 0, 0);
-  lv_obj_set_style_pad_hor(b, 20, 0);
-  lv_obj_t* l = lv_label_create(b);
-  lv_label_set_text(l, t);
-  lv_obj_set_style_text_font(l, &noto20, 0);
-  lv_obj_set_style_text_color(l, primary ? C_ONPASTEL : C_TEXT, 0);
-  lv_obj_center(l);
-  if (cb) lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
-  return b;
-}
-
-static lv_obj_t* newRow(lv_obj_t* par) {
-  lv_obj_t* r = lv_obj_create(par);
-  lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(r, 0, 0);
-  lv_obj_set_style_pad_all(r, 0, 0);
-  lv_obj_set_style_pad_gap(r, 10, 0);
-  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
-  return r;
-}
-
 static void showScan();
 static void showPass(const String& ssid);
 static void showHome();
@@ -187,7 +138,6 @@ static void onNetClick(lv_event_t* e) {
 
 static void fillList(int n) {
   lv_obj_clean(listBox);
-  // aynı adlı ağları ele (en güçlü RSSI ilk gelsin diye sıralı gez)
   int idx[40], cnt = 0;
   for (int i = 0; i < n && cnt < 40; i++) idx[cnt++] = i;
   for (int a = 0; a < cnt; a++)
@@ -243,14 +193,18 @@ static void startScan() {
 }
 
 static void onRefresh(lv_event_t*) { startScan(); }
+static void onListBack(lv_event_t*) {
+  if (WiFi.status() == WL_CONNECTED) showHome();
+}
 
 static void buildList() {
   scrList = newScreen();
-  lv_obj_t* top = newRow(scrList);
-  lv_obj_t* t = newLabel(top, "WiFi Kurulumu", &noto28, C_CYAN);
+  lv_obj_t* top = uiRow(scrList);
+  lv_obj_t* t = uiLabel(top, "WiFi Kurulumu", &noto28, C_CYAN);
   lv_obj_set_flex_grow(t, 1);
-  newBtn(top, LV_SYMBOL_REFRESH "  Yenile", false, onRefresh);
-  listInfo = newLabel(scrList, "", &noto20, C_DIM);
+  uiBtn(top, "Geri", false, onListBack);
+  uiBtn(top, LV_SYMBOL_REFRESH "  Yenile", false, onRefresh);
+  listInfo = uiLabel(scrList, "", &noto20, C_DIM);
   listBox = lv_obj_create(scrList);
   lv_obj_set_width(listBox, LV_PCT(100));
   lv_obj_set_flex_grow(listBox, 1);
@@ -269,8 +223,7 @@ static void showScan() {
 // ---- Şifre ekranı
 static void onPassBack(lv_event_t*) { showScan(); }
 static void onEye(lv_event_t*) {
-  bool pw = lv_textarea_get_password_mode(passTa);
-  lv_textarea_set_password_mode(passTa, !pw);
+  lv_textarea_set_password_mode(passTa, !lv_textarea_get_password_mode(passTa));
 }
 static void doConnectFromPass() {
   startConnect(curSsid, String(lv_textarea_get_text(passTa)), false);
@@ -282,44 +235,52 @@ static void onKb(lv_event_t* e) {
   else if (c == LV_EVENT_CANCEL) showScan();
 }
 
+static void styleKeyboard(lv_obj_t* kb) {
+  lv_obj_set_style_bg_color(kb, C_BG, 0);
+  lv_obj_set_style_pad_all(kb, 4, 0);
+  lv_obj_set_style_bg_color(kb, C_BTN, LV_PART_ITEMS);
+  lv_obj_set_style_text_color(kb, C_TEXT, LV_PART_ITEMS);
+  lv_obj_set_style_text_font(kb, &noto20, LV_PART_ITEMS);
+  lv_obj_set_style_border_color(kb, C_FRAME, LV_PART_ITEMS);
+  lv_obj_set_style_border_width(kb, 2, LV_PART_ITEMS);
+  lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS);
+}
+
+static void styleTextarea(lv_obj_t* ta) {
+  lv_obj_set_style_bg_color(ta, C_CARD, 0);
+  lv_obj_set_style_text_color(ta, C_TEXT, 0);
+  lv_obj_set_style_border_color(ta, C_FRAME, 0);
+  lv_obj_set_style_border_width(ta, 3, 0);
+  lv_obj_set_style_text_font(ta, &noto28, 0);
+}
+
 static void buildPass() {
   scrPass = newScreen();
   lv_obj_set_style_pad_all(scrPass, 8, 0);
-  lv_obj_t* top = newRow(scrPass);
-  newLabel(top, "Şifre", &noto28, C_CYAN);
-  passSsid = newLabel(top, "", &noto28, C_ORANGE);
+  lv_obj_t* top = uiRow(scrPass);
+  uiLabel(top, "Şifre", &noto28, C_CYAN);
+  passSsid = uiLabel(top, "", &noto28, C_ORANGE);
   lv_obj_set_flex_grow(passSsid, 1);
   lv_label_set_long_mode(passSsid, LV_LABEL_LONG_DOT);
 
-  lv_obj_t* r = newRow(scrPass);
+  lv_obj_t* r = uiRow(scrPass);
   passTa = lv_textarea_create(r);
   lv_obj_set_flex_grow(passTa, 1);
   lv_textarea_set_one_line(passTa, true);
   lv_textarea_set_password_mode(passTa, true);
   lv_textarea_set_placeholder_text(passTa, "WiFi şifresi");
-  lv_obj_set_style_bg_color(passTa, C_CARD, 0);
-  lv_obj_set_style_text_color(passTa, C_TEXT, 0);
-  lv_obj_set_style_border_color(passTa, C_FRAME, 0);
-  lv_obj_set_style_border_width(passTa, 3, 0);
-  lv_obj_set_style_text_font(passTa, &noto28, 0);
-  passEye = newBtn(r, LV_SYMBOL_EYE_OPEN, false, onEye);
+  styleTextarea(passTa);
+  uiBtn(r, LV_SYMBOL_EYE_OPEN, false, onEye);
 
-  lv_obj_t* r2 = newRow(scrPass);
-  newBtn(r2, "Geri", false, onPassBack);
-  newBtn(r2, "Bağlan", true, onPassGo);
-  passMsg = newLabel(r2, "", &noto20, C_RED);
+  lv_obj_t* r2 = uiRow(scrPass);
+  uiBtn(r2, "Geri", false, onPassBack);
+  uiBtn(r2, "Bağlan", true, onPassGo);
+  passMsg = uiLabel(r2, "", &noto20, C_RED);
   lv_obj_set_flex_grow(passMsg, 1);
 
   passKb = lv_keyboard_create(scrPass);
   lv_obj_set_size(passKb, LV_PCT(100), LV_PCT(48));
-  lv_obj_set_style_bg_color(passKb, C_BG, 0);
-  lv_obj_set_style_pad_all(passKb, 4, 0);
-  lv_obj_set_style_bg_color(passKb, C_BTN, LV_PART_ITEMS);
-  lv_obj_set_style_text_color(passKb, C_TEXT, LV_PART_ITEMS);
-  lv_obj_set_style_text_font(passKb, &noto20, LV_PART_ITEMS);
-  lv_obj_set_style_border_color(passKb, C_FRAME, LV_PART_ITEMS);
-  lv_obj_set_style_border_width(passKb, 2, LV_PART_ITEMS);
-  lv_obj_set_style_shadow_width(passKb, 0, LV_PART_ITEMS);
+  styleKeyboard(passKb);
   lv_keyboard_set_textarea(passKb, passTa);
   lv_obj_add_event_cb(passKb, onKb, LV_EVENT_ALL, nullptr);
 }
@@ -347,9 +308,9 @@ static void buildBusy() {
   lv_obj_set_size(sp, 90, 90);
   lv_obj_set_style_arc_color(sp, C_CYAN, LV_PART_INDICATOR);
   lv_obj_set_style_arc_color(sp, C_CARD, LV_PART_MAIN);
-  busyLbl = newLabel(scrBusy, "", &noto28, C_TEXT);
+  busyLbl = uiLabel(scrBusy, "", &noto28, C_TEXT);
   lv_obj_set_style_text_align(busyLbl, LV_TEXT_ALIGN_CENTER, 0);
-  busyCancel = newBtn(scrBusy, "Vazgeç", false, onBusyCancel);
+  uiBtn(scrBusy, "Vazgeç", false, onBusyCancel);
 }
 
 static void startConnect(const String& ssid, const String& pass, bool fromBoot) {
@@ -360,40 +321,16 @@ static void startConnect(const String& ssid, const String& pass, bool fromBoot) 
   lv_screen_load(scrBusy);
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
   WiFi.disconnect();
   WiFi.begin(ssid.c_str(), pass.c_str());
   st = ST_CONNECTING;
   stSince = millis();
 }
 
-// ---- Ana ekran (yer tutucu: HUB sayfaları buraya gelecek)
-static void onHomeWifi(lv_event_t*) { showScan(); }
-static void onHomeRot(lv_event_t*) {
-  applyRotation(rot + 1);
-  lv_obj_invalidate(lv_screen_active());
-}
+static void showHome() { lv_screen_load(scrHome); }
 
-static void buildHome() {
-  scrHome = newScreen();
-  newLabel(scrHome, "CrowPanel HUB", &noto28, C_CYAN);
-  lv_obj_t* card = lv_obj_create(scrHome);
-  lv_obj_set_size(card, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_bg_color(card, C_CARD, 0);
-  lv_obj_set_style_border_color(card, C_FRAME, 0);
-  lv_obj_set_style_border_width(card, 3, 0);
-  lv_obj_set_style_radius(card, 10, 0);
-  lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-  homeInfo = newLabel(card, "", &noto20, C_TEXT);
-  lv_obj_t* r = newRow(scrHome);
-  newBtn(r, "WiFi değiştir", false, onHomeWifi);
-  newBtn(r, "Ekranı döndür", false, onHomeRot);
-}
-
-static void showHome() {
-  lv_label_set_text_fmt(homeInfo, "Ağ: %s\nIP: %s\nSinyal: %d dBm", WiFi.SSID().c_str(),
-                        WiFi.localIP().toString().c_str(), WiFi.RSSI());
-  lv_screen_load(scrHome);
-}
+void uiShowWifiSetup() { showScan(); }
 
 // ---- Durum makinesi (250 ms)
 static void tick(lv_timer_t*) {
@@ -412,14 +349,24 @@ static void tick(lv_timer_t*) {
     uint32_t el = millis() - stSince;
     if (s == WL_CONNECTED) {
       st = ST_IDLE;
-      saveWifi(curSsid, curPass);
+      // listeye ekle ve tercih edilen yap (varsa şifreyi günceller)
+      wifiNetsAdd(curSsid, curPass);
+      for (int i = 0;; i++) {
+        String a, b;
+        if (!wifiNetsGet(i, a, b)) break;
+        if (a == curSsid) { if (i) wifiNetsMakePreferred(i); break; }
+      }
+      hubOnWifiUp();
       showHome();
-    } else if (el > 20000 || (s == WL_CONNECT_FAILED && el > 3000)) {
+    } else if (el > 12000 || (s == WL_CONNECT_FAILED && el > 3000)) {
       st = ST_IDLE;
       WiFi.disconnect();
-      if (connectFromBoot) {
+      String ns, np;
+      if (connectFromBoot && wifiNetsGet(++bootIdx, ns, np)) {
+        startConnect(ns, np, true);
+      } else if (connectFromBoot) {
         showScan();
-        lv_label_set_text(listInfo, "Kayıtlı ağa bağlanılamadı. Başka bir ağ seç.");
+        lv_label_set_text(listInfo, "Kayıtlı ağlara bağlanılamadı. Bir ağ seç.");
       } else {
         showPass(curSsid);
         lv_label_set_text(passMsg, s == WL_CONNECT_FAILED ? "Bağlanamadı: şifre yanlış olabilir" : "Bağlanamadı (zaman aşımı)");
@@ -428,13 +375,107 @@ static void tick(lv_timer_t*) {
   }
 }
 
+// ------------------------------------------------------------------ Metin girişi / onay pencereleri
+static lv_obj_t* overlay;
+static lv_obj_t* ovTa;
+static UiPromptCb ovPromptCb;
+static UiConfirmCb ovConfirmCb;
+
+static void closeOverlay() {
+  if (overlay) lv_obj_delete_async(overlay);
+  overlay = nullptr;
+}
+
+static lv_obj_t* newOverlay() {
+  closeOverlay();
+  overlay = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_color(overlay, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(overlay, LV_OPA_80, 0);
+  lv_obj_set_style_border_width(overlay, 0, 0);
+  lv_obj_set_style_radius(overlay, 0, 0);
+  lv_obj_set_style_pad_all(overlay, 8, 0);
+  lv_obj_set_flex_flow(overlay, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_gap(overlay, 8, 0);
+  lv_obj_remove_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_text_color(overlay, C_TEXT, 0);
+  lv_obj_set_style_text_font(overlay, &noto20, 0);
+  return overlay;
+}
+
+static void ovKb(lv_event_t* e) {
+  lv_event_code_t c = lv_event_get_code(e);
+  if (c == LV_EVENT_READY) {
+    UiPromptCb cb = ovPromptCb;
+    String v = lv_textarea_get_text(ovTa);
+    closeOverlay();
+    if (cb) cb(v.c_str());
+  } else if (c == LV_EVENT_CANCEL) {
+    closeOverlay();
+  }
+}
+static void ovOk(lv_event_t*) {
+  UiPromptCb cb = ovPromptCb;
+  String v = lv_textarea_get_text(ovTa);
+  closeOverlay();
+  if (cb) cb(v.c_str());
+}
+static void ovCancel(lv_event_t*) { closeOverlay(); }
+static void ovEye(lv_event_t*) { lv_textarea_set_password_mode(ovTa, !lv_textarea_get_password_mode(ovTa)); }
+
+void uiPrompt(const char* title, const char* initial, bool password, UiPromptCb cb) {
+  ovPromptCb = cb;
+  lv_obj_t* o = newOverlay();
+  lv_obj_t* top = uiRow(o);
+  lv_obj_t* t = uiLabel(top, title, &noto28, C_CYAN);
+  lv_obj_set_flex_grow(t, 1);
+  lv_obj_t* r = uiRow(o);
+  ovTa = lv_textarea_create(r);
+  lv_obj_set_flex_grow(ovTa, 1);
+  lv_textarea_set_one_line(ovTa, true);
+  lv_textarea_set_password_mode(ovTa, password);
+  lv_textarea_set_text(ovTa, initial ? initial : "");
+  styleTextarea(ovTa);
+  if (password) uiBtn(r, LV_SYMBOL_EYE_OPEN, false, ovEye);
+  lv_obj_t* r2 = uiRow(o);
+  uiBtn(r2, "Vazgeç", false, ovCancel);
+  uiBtn(r2, "Tamam", true, ovOk);
+  lv_obj_t* kb = lv_keyboard_create(o);
+  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(48));
+  styleKeyboard(kb);
+  lv_keyboard_set_textarea(kb, ovTa);
+  lv_obj_add_event_cb(kb, ovKb, LV_EVENT_ALL, nullptr);
+}
+
+static void ovYes(lv_event_t*) {
+  UiConfirmCb cb = ovConfirmCb;
+  closeOverlay();
+  if (cb) cb();
+}
+
+void uiConfirm(const char* text, UiConfirmCb cb) {
+  ovConfirmCb = cb;
+  lv_obj_t* o = newOverlay();
+  lv_obj_set_flex_align(o, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t* card = uiCard(o);
+  lv_obj_set_width(card, LV_PCT(80));
+  lv_obj_t* l = uiLabel(card, text, &noto28, C_TEXT);
+  lv_obj_set_width(l, LV_PCT(100));
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_t* r = uiRow(card);
+  uiBtn(r, "Vazgeç", false, ovCancel);
+  uiBtn(r, "Evet", true, ovYes);
+}
+
+// ------------------------------------------------------------------ başlangıç
 void uiStart() {
   buildList();
   buildPass();
   buildBusy();
-  buildHome();
+  scrHome = hubUiCreate();
   lv_timer_create(tick, 250, nullptr);
-  loadWifi();
-  if (savedSsid.length()) startConnect(savedSsid, savedPass, true);
+  String s0, p0;
+  bootIdx = 0;
+  if (wifiNetsGet(0, s0, p0)) startConnect(s0, p0, true);
   else showScan();
 }

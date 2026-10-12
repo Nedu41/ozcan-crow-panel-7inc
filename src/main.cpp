@@ -1,16 +1,88 @@
-#include <Arduino.h>
+// CrowPanel HUB: ev-lamba "Merkezi HUB" + LedPanel kumandası + LVGL dokunmatik arayüz.
+// Akış: guiInit -> uiStart (kayıtlı ağlara bağlan / dokunmatik WiFi kurulumu) -> hubOnWifiUp (hizmetler).
+#include <ArduinoOTA.h>
+#include <ESPmDNS.h>
+#include <LittleFS.h>
+#include <WiFi.h>
 
+#include "alerts.h"
+#include "automation.h"
+#include "app_state.h"
+#include "data_task.h"
+#include "devices.h"
+#include "events.h"
+#include "hub.h"
+#include "mqtt_link.h"
+#include "storage.h"
+#include "telegram.h"
 #include "ui.h"
+#include "weather.h"
+#include "web_server.h"
+
+static bool hubUp = false;
+
+void hubOnWifiUp() {
+  if (hubUp) {
+    MDNS.end();
+    MDNS.begin("crowhub");  // ağ değişti: mDNS'i yeniden duyur
+    return;
+  }
+  hubUp = true;
+  Serial.println("WiFi bağlandı. IP: " + WiFi.localIP().toString());
+
+  if (MDNS.begin("crowhub")) Serial.println("mDNS: crowhub.local");
+  ArduinoOTA.setHostname("crowhub");
+  ArduinoOTA.begin();
+  forceNtpSync();
+
+  xTaskCreatePinnedToCore(updateAllDeviceStatuses, "Status", 8192, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(updateWeatherAndControlTask, "Weather", 8192, NULL, 1, NULL, 0);
+  startDataTask();
+  setupWebServer();
+
+#ifndef DEV_SCREENSHOT  // geliştirme imajında her yüklemede mesaj gitmesin
+  // Telegram başlangıç mesajı arayüzü bekletmesin (HTTPS, 10 sn'ye kadar sürebilir)
+  xTaskCreatePinnedToCore(
+      [](void*) {
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        sendTelegramAlert("🚀 *CrowPanel HUB başlatıldı*\n📶 IP: " + WiFi.localIP().toString() + "\n📡 MAC: " + WiFi.macAddress());
+        vTaskDelete(nullptr);
+      },
+      "TgBoot", 8192, NULL, 1, NULL, 0);
+#endif
+}
 
 void setup() {
   Serial.begin(115200);
   Serial.printf("PSRAM: %s, %u bayt\n", psramFound() ? "var" : "YOK", ESP.getPsramSize());
   if (!psramFound()) { Serial.println("PSRAM yok: ekran baslatilmiyor"); return; }
+
+  statusMutex = xSemaphoreCreateMutex();
+  weatherMutex = xSemaphoreCreateMutex();
+  newsMutex = xSemaphoreCreateMutex();
+  initEvents();
+
+  if (!LittleFS.begin(true)) {  // true: bozuksa biçimlendir
+    Serial.println("LittleFS baslatilamadi, yeniden baslatiliyor");
+    delay(3000);
+    ESP.restart();
+  }
+  alertsInit();
+  loadDevices();
+  loadWeatherConfig();
+  loadScheduleConfig();
+  mqttSetup();
+
   guiInit();
   uiStart();
 }
 
 void loop() {
   guiLoop();
+  if (hubUp) {
+    webLoop();
+    ArduinoOTA.handle();
+    mqttLoop();
+  }
   delay(5);
 }
