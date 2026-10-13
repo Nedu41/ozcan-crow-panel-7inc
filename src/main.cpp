@@ -38,9 +38,7 @@ static void hubStartTask(void*) {
 
 #ifndef DEV_SCREENSHOT  // geliştirme imajında her yüklemede mesaj gitmesin
   vTaskDelay(pdMS_TO_TICKS(3000));
-  sendTelegramAlert("🚀 *CrowPanel HUB başlatıldı*
-📶 IP: " + WiFi.localIP().toString() + "
-📡 MAC: " + WiFi.macAddress());
+  sendTelegramAlert(String("🚀 *CrowPanel HUB başlatıldı*\n📶 IP: ") + WiFi.localIP().toString() + "\n📡 MAC: " + WiFi.macAddress());
 #endif
   vTaskDelete(nullptr);
 }

@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Web arayuzu basliginda ve TFT ust seridinde gosterilir - tek kaynak burasi
-#define FW_VERSION "7.2.0-crow"
+#define FW_VERSION "7.2.1-crow"
 
 // ---- Donanim ----
 // Pinler: board.h / docs/DONANIM.md
