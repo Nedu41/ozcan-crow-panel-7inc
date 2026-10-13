@@ -13,7 +13,7 @@
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_28 1
-#define LV_FONT_MONTSERRAT_48 1
+#define LV_FONT_MONTSERRAT_48 0
 #define LV_FONT_CUSTOM_DECLARE extern const lv_font_t noto16, noto20, noto28;
 #define LV_FONT_DEFAULT &noto20
 

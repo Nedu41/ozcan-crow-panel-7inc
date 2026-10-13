@@ -14,6 +14,7 @@
 #include "telegram.h"
 #include "efekt.h"
 #include "sky.h"
+#include "guncelle.h"
 #include "ui.h"
 #include "ui_common.h"
 #include "web_server.h"
@@ -65,6 +66,7 @@ static void drawMiniIcon(lv_obj_t* cv, int code, bool past);
 static lv_image_dsc_t skyDsc;
 static int skyCardW = 0;
 static lv_obj_t *cardAlert, *lblAlertTitle, *lblAlertDetail, *lblNews;
+static lv_obj_t *alertOv, *ovTitle, *ovDetail;  // Ana sayfada haftalik tahmin seridinin ustune binen uyari
 static String alertId;
 static String lastNews;
 
@@ -89,7 +91,7 @@ static void onAlertAck(lv_event_t*) {
 static void buildHome() {
   lv_obj_t* r = uiRow(tabHome);
   lv_obj_set_flex_align(r, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lblTime = uiLabel(r, "--:--", &lv_font_montserrat_48, C_CYAN);
+  lblTime = uiLabel(r, "--:--", &dseg64, C_CYAN);
   lblLoc = uiLabel(r, "", &noto28, C_TEXT);  // saatin yaninda mahalle / ilce
   lv_obj_set_flex_grow(lblLoc, 1);
   lv_label_set_long_mode(lblLoc, LV_LABEL_LONG_DOT);
@@ -133,12 +135,12 @@ static void buildHome() {
   };
   boxT = box(C_ORANGE);
   lblWxDesc = uiLabel(boxT, "Hava durumu yükleniyor…", &noto28, C_TEXT);
-  lblTemp = uiLabel(boxT, "--", &lv_font_montserrat_48, C_ORANGE);
+  lblTemp = uiLabel(boxT, "--", &dseg52, C_ORANGE);
   lblTempC = uiLabel(boxT, "°C", &noto28, C_ORANGE);
   boxW = box(C_CYAN);
   lblWindT = uiLabel(boxW, "RÜZGAR", &noto20, C_DIM);
   lblWindDir = uiLabel(boxW, "", &noto28, C_TEXT);
-  lblWindVal = uiLabel(boxW, "--", &lv_font_montserrat_48, C_CYAN);
+  lblWindVal = uiLabel(boxW, "--", &dseg52, C_CYAN);
   lblWindU = uiLabel(boxW, "km/s", &noto28, C_CYAN);
   boxF = box(C_DIM);
   for (int i = 0; i < 7; i++) {
@@ -159,15 +161,35 @@ static void buildHome() {
   lv_obj_add_flag(lblWxMore, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(lblSun, LV_OBJ_FLAG_HIDDEN);
 
-  cardAlert = uiCard(tabHome);
-  lv_obj_set_style_border_color(cardAlert, C_ORANGE, 0);
-  lblAlertTitle = uiLabel(cardAlert, "", &noto28, C_ORANGE);
-  lblAlertDetail = uiLabel(cardAlert, "", &noto20, C_TEXT);
-  lv_obj_set_width(lblAlertDetail, LV_PCT(100));
-  lv_label_set_long_mode(lblAlertDetail, LV_LABEL_LONG_WRAP);
-  uiBtn(cardAlert, "Anladım", false, onAlertAck);
-  lv_obj_add_flag(cardAlert, LV_OBJ_FLAG_HIDDEN);
 
+  // Uyari: Ana sayfada haftalik tahmin seridinin yerine biner (diger sekmelerde ust serit gorunur)
+  alertOv = lv_obj_create(skyCard);
+  lv_obj_set_style_bg_color(alertOv, lv_color_hex(0x5A1020), 0);
+  lv_obj_set_style_bg_opa(alertOv, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(alertOv, C_RED, 0);
+  lv_obj_set_style_border_width(alertOv, 2, 0);
+  lv_obj_set_style_pad_all(alertOv, 4, 0);
+  lv_obj_set_style_pad_gap(alertOv, 6, 0);
+  lv_obj_set_flex_flow(alertOv, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(alertOv, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(alertOv, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* ocol = lv_obj_create(alertOv);
+  lv_obj_set_style_bg_opa(ocol, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(ocol, 0, 0);
+  lv_obj_set_style_pad_all(ocol, 0, 0);
+  lv_obj_set_style_pad_gap(ocol, 0, 0);
+  lv_obj_set_flex_grow(ocol, 1);
+  lv_obj_set_height(ocol, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(ocol, LV_FLEX_FLOW_COLUMN);
+  lv_obj_remove_flag(ocol, LV_OBJ_FLAG_SCROLLABLE);
+  ovTitle = uiLabel(ocol, "", &noto20, lv_color_hex(0xFFFFFF));
+  lv_obj_set_width(ovTitle, LV_PCT(100));
+  lv_label_set_long_mode(ovTitle, LV_LABEL_LONG_DOT);
+  ovDetail = uiLabel(ocol, "", &noto16, lv_color_hex(0xFFD6DC));
+  lv_obj_set_width(ovDetail, LV_PCT(100));
+  lv_label_set_long_mode(ovDetail, LV_LABEL_LONG_DOT);
+  uiBtn(alertOv, "Anladım", false, onAlertAck, LV_SIZE_CONTENT, 36);
+  lv_obj_add_flag(alertOv, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ---- alt kayan yazi: kendi animasyonumuz (LVGL dairesel kaydirma uzun metinde cok hizli kaliyordu)
@@ -275,17 +297,26 @@ static void tickHome() {
   static uint32_t aver = 0xFFFFFFFF;
   if (alertsVersion() != aver) {
     aver = alertsVersion();
-    Alert a[2];
-    int n = alertsSnapshot(a, 2);
+    Alert a[6];
+    int n = alertsSnapshot(a, 6);
     if (n > 0) {
       alertId = a[0].id;
-      uiSetText(lblAlertTitle, a[0].title.c_str());
+      uiSetText(lblAlertTitle, (a[0].title + (n > 1 ? "   (+" + String(n - 1) + " uyarı daha)" : "")).c_str());
       uiSetText(lblAlertDetail, a[0].detail.c_str());
-      lv_obj_remove_flag(cardAlert, LV_OBJ_FLAG_HIDDEN);
+      uiSetText(ovTitle, (a[0].title + (n > 1 ? "  (+" + String(n - 1) + ")" : "")).c_str());
+      uiSetText(ovDetail, a[0].detail.c_str());
     } else {
       alertId = "";
-      lv_obj_add_flag(cardAlert, LV_OBJ_FLAG_HIDDEN);
     }
+  }
+
+  // uyari gorunurlugu: Ana sekmesinde tahmin seridinin ustunde, diger sekmelerde ekranin ustunde serit
+  {
+    bool any = alertId.length() > 0, home = tv && lv_tabview_get_tab_active(tv) == 0;
+    static int prevOv = -1, prevBar = -1;
+    int wantOv = any && home, wantBar = any && !home;
+    if (wantOv != prevOv) { prevOv = wantOv; if (wantOv) lv_obj_remove_flag(alertOv, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(alertOv, LV_OBJ_FLAG_HIDDEN); }
+    if (wantBar != prevBar) { prevBar = wantBar; if (wantBar) lv_obj_remove_flag(cardAlert, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(cardAlert, LV_OBJ_FLAG_HIDDEN); }
   }
 
   // haber: alttaki kayan yazi (parti parti, sabit hiz)
@@ -374,7 +405,7 @@ static void buildLamps() {
   lv_obj_set_style_bg_opa(lampBox, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(lampBox, 0, 0);
   lv_obj_set_style_pad_all(lampBox, 0, 0);
-  lv_obj_set_style_pad_gap(lampBox, 10, 0);
+  lv_obj_set_style_pad_gap(lampBox, 6, 0);
   lv_obj_set_flex_flow(lampBox, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_remove_flag(lampBox, LV_OBJ_FLAG_SCROLLABLE);
   ctlQ = xQueueCreate(8, sizeof(Ctl));
@@ -401,31 +432,35 @@ static void tickLamps() {
     for (JsonObject d : arr) {
       if (i >= MAX_DEVICES) break;
       lv_obj_t* card = uiCard(lampBox);
-      lv_obj_set_width(card, LV_PCT(48));
+      lv_obj_set_width(card, uiIsLandscape() ? LV_PCT(32) : LV_PCT(48));  // yatayda 3 sutun
+      lv_obj_set_style_pad_all(card, 6, 0);
+      lv_obj_set_style_pad_gap(card, 3, 0);
       lv_obj_t* hr = uiRow(card);
+      lv_obj_set_style_pad_gap(hr, 6, 0);
       lampDot[i] = dot(hr);
-      lv_obj_t* nm = uiLabel(hr, String((const char*)(d["name"] | "?")).c_str(), &noto20, C_TEXT);
+      lv_obj_t* nm = uiLabel(hr, String((const char*)(d["name"] | "?")).c_str(), &noto16, C_TEXT);
       lv_obj_set_flex_grow(nm, 1);
       lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
       tmrIdx[i] = i;
-      lv_obj_t* tb = uiBtn(hr, "Zamanlayıcı", false, nullptr, LV_SIZE_CONTENT, 40);
-      lv_obj_set_style_pad_hor(tb, 10, 0);
+      lv_obj_t* tb = uiBtn(hr, "Zaman", false, nullptr, LV_SIZE_CONTENT, 30);
+      lv_obj_set_style_pad_hor(tb, 8, 0);
       lv_obj_set_style_text_font(uiBtnLabel(tb), &noto16, 0);
       lv_obj_add_event_cb(tb, onTimer, LV_EVENT_CLICKED, &tmrIdx[i]);
       lampWifi[i] = uiLabel(card, "", &noto16, C_DIM);
+      lv_obj_t* rr = uiRow(card);  // iki role yan yana
+      lv_obj_set_style_pad_gap(rr, 4, 0);
       for (int r = 0; r < MAX_RELAYS; r++) {
         refs[i][r] = {i, r + 1};
-        lv_obj_t* rr = uiRow(card);
-        char rn[4];
-        snprintf(rn, sizeof(rn), "R%d", r + 1);
-        uiLabel(rr, rn, &noto20, C_DIM);
-        lampBtn[i][r] = uiBtn(rr, "", false, nullptr, LV_SIZE_CONTENT, 52);
+        lampBtn[i][r] = uiBtn(rr, "", false, nullptr, LV_SIZE_CONTENT, 42);
         lv_obj_set_flex_grow(lampBtn[i][r], 1);
+        lv_obj_set_style_pad_hor(lampBtn[i][r], 4, 0);
+        lv_obj_set_style_text_font(uiBtnLabel(lampBtn[i][r]), &noto16, 0);
         lv_obj_add_event_cb(lampBtn[i][r], onRelay, LV_EVENT_CLICKED, &refs[i][r]);
-        lampSched[i][r] = uiLabel(card, "", &noto16, C_DIM);
-        lv_obj_set_width(lampSched[i][r], LV_PCT(100));
-        lv_label_set_long_mode(lampSched[i][r], LV_LABEL_LONG_DOT);
       }
+      lampSched[i][0] = uiLabel(card, "", &noto16, C_DIM);  // iki rolenin zamanlayici ozeti (satir satir)
+      lv_obj_set_width(lampSched[i][0], LV_PCT(100));
+      lv_label_set_long_mode(lampSched[i][0], LV_LABEL_LONG_DOT);
+      lv_obj_add_flag(lampSched[i][0], LV_OBJ_FLAG_HIDDEN);
       i++;
     }
     lampSig = sig;
@@ -455,12 +490,15 @@ static void tickLamps() {
       }
       uiSetText(lampWifi[i], w);
     }
+    char sched[160] = "";
     for (int r = 0; r < MAX_RELAYS; r++) {
       if (!lampBtn[i][r]) continue;
       String s = st.isNull() ? "OFFLINE" : String((const char*)(st[r == 0 ? "r1_state" : "r2_state"] | "OFFLINE"));
       bool on = s == "ON";
       lv_obj_t* l = uiBtnLabel(lampBtn[i][r]);
-      uiSetText(l, !online ? "HATA" : (on ? "AÇIK" : "KAPALI"));
+      char bl[24];
+      snprintf(bl, sizeof(bl), "R%d %s", r + 1, !online ? "HATA" : (on ? "AÇIK" : "KAPALI"));
+      uiSetText(l, bl);
       uiBtnOn(lampBtn[i][r], online && on, C_CYAN);
       if (!online) lv_obj_set_style_text_color(l, C_RED, 0);
       // zamanlayıcı özeti
@@ -477,7 +515,15 @@ static void tickLamps() {
         }
         xSemaphoreGive(scheduleMutex);
       }
-      uiSetText(lampSched[i][r], info);
+      if (info[0]) {
+        size_t L = strlen(sched);
+        snprintf(sched + L, sizeof(sched) - L, "%sR%d %s", L ? "\n" : "", r + 1, info);
+      }
+    }
+    if (lampSched[i][0]) {
+      uiSetText(lampSched[i][0], sched);
+      bool hide = sched[0] == 0, isHid = lv_obj_has_flag(lampSched[i][0], LV_OBJ_FLAG_HIDDEN);
+      if (hide != isHid) { if (hide) lv_obj_add_flag(lampSched[i][0], LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(lampSched[i][0], LV_OBJ_FLAG_HIDDEN); }
     }
     i++;
   }
@@ -636,6 +682,54 @@ static void onBl(lv_event_t* e) {
   if (lv_event_get_code(e) == LV_EVENT_RELEASED) uiSetBacklight(v);
 }
 
+static lv_obj_t *ctLbl, *dgLbl, *saLbl, *updLbl;
+static bool updBekle = false;  // "Güncellemeyi denetle" cevabı bekleniyor
+static void updNoop() {}
+static void updBaslat() { guncelleGithubBaslat(); }
+static void onUpdSrcOk(const char* t) { guncelleKaynakAyarla(String(t)); }
+static void onUpdSrc(lv_event_t*) { uiPrompt("GitHub kaynağı (kullanıcı/depo)", guncelleKaynak().c_str(), false, onUpdSrcOk); }
+static void onUpdChk(lv_event_t*) {
+  if (!guncelleKaynak().length()) { onUpdSrc(nullptr); return; }
+  guncelleDenetle();
+  updBekle = true;
+}
+static void updTick(lv_timer_t*) {
+  GuncelleDurum d = guncelleDurumu();
+  char b[96];
+  if (d == GD_INDIRILIYOR) snprintf(b, sizeof(b), "Güncelleme: %%%d", guncelleIlerleme());
+  else if (d == GD_DENETLENIYOR) snprintf(b, sizeof(b), "Güncelleme denetleniyor…");
+  else b[0] = 0;
+  if (updLbl) uiSetText(updLbl, b);
+  if (updBekle && d != GD_DENETLENIYOR) {
+    updBekle = false;
+    if (d == GD_HATA) uiConfirm(guncelleMesaj().c_str(), updNoop);
+    else if (guncelleYeniVarMi()) uiConfirm((String("Yeni sürüm ") + guncelleSonSurum() + " bulundu. İndirilip yüklensin mi?").c_str(), updBaslat);
+    else uiConfirm((String("Yazılım güncel (") + FW_VERSION + ")").c_str(), updNoop);
+  }
+}
+static void onCt(lv_event_t* e) {
+  int v = lv_slider_get_value(lv_event_get_target_obj(e));
+  char b[32];
+  snprintf(b, sizeof(b), "Kontrast (%%%d)", v);
+  lv_label_set_text(ctLbl, b);
+  if (lv_event_get_code(e) == LV_EVENT_RELEASED) uiSetColorAdjust(v, uiGetGain(), true);
+}
+static void onDg(lv_event_t* e) {
+  int v = lv_slider_get_value(lv_event_get_target_obj(e));
+  char b[40];
+  snprintf(b, sizeof(b), "Renk parlaklığı (%%%d)", v);
+  lv_label_set_text(dgLbl, b);
+  if (lv_event_get_code(e) == LV_EVENT_RELEASED) uiSetColorAdjust(uiGetContrast(), v, true);
+}
+
+static void onSa(lv_event_t* e) {
+  int v = lv_slider_get_value(lv_event_get_target_obj(e));
+  char b[32];
+  snprintf(b, sizeof(b), "Canlılık (%%%d)", v);
+  lv_label_set_text(saLbl, b);
+  if (lv_event_get_code(e) == LV_EVENT_RELEASED) uiSetSaturation(v, true);
+}
+
 static void buildSet() {
   lv_obj_t* c = uiCard(tabSet);
   setInfo = uiLabel(c, "", &noto20, C_TEXT);
@@ -648,6 +742,26 @@ static void buildSet() {
   snprintf(b, sizeof(b), "Ekran parlaklığı (%%%d)", uiGetBacklight());
   lv_label_set_text(blLbl, b);
 
+  lv_obj_t* cc = uiCard(tabSet);  // yazilim renk ayari: ekran cok parlak / kontrastli ise
+  ctLbl = uiLabel(cc, "", &noto20, C_TEXT);
+  lv_obj_t* s2 = uiSlider(cc, 50, 130, uiGetContrast(), C_CYAN);
+  lv_obj_add_event_cb(s2, onCt, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(s2, onCt, LV_EVENT_RELEASED, nullptr);
+  dgLbl = uiLabel(cc, "", &noto20, C_TEXT);
+  lv_obj_t* s3 = uiSlider(cc, 40, 100, uiGetGain(), C_ORANGE);
+  lv_obj_add_event_cb(s3, onDg, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(s3, onDg, LV_EVENT_RELEASED, nullptr);
+  saLbl = uiLabel(cc, "", &noto20, C_TEXT);
+  lv_obj_t* s4 = uiSlider(cc, 80, 220, uiGetSaturation(), C_GREEN);
+  lv_obj_add_event_cb(s4, onSa, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(s4, onSa, LV_EVENT_RELEASED, nullptr);
+  snprintf(b, sizeof(b), "Canlılık (%%%d)", uiGetSaturation());
+  lv_label_set_text(saLbl, b);
+  snprintf(b, sizeof(b), "Kontrast (%%%d)", uiGetContrast());
+  lv_label_set_text(ctLbl, b);
+  snprintf(b, sizeof(b), "Renk parlaklığı (%%%d)", uiGetGain());
+  lv_label_set_text(dgLbl, b);
+
   lv_obj_t* r = lv_obj_create(tabSet);
   lv_obj_set_width(r, LV_PCT(100));
   lv_obj_set_height(r, LV_SIZE_CONTENT);
@@ -657,7 +771,11 @@ static void buildSet() {
   lv_obj_set_style_pad_gap(r, 10, 0);
   lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+  updLbl = uiLabel(bc, "", &noto20, C_ORANGE);
+  lv_timer_create(updTick, 500, nullptr);
   uiBtn(r, "WiFi ayarı", false, onSetWifi);
+  uiBtn(r, "Güncellemeyi denetle", false, onUpdChk);
+  uiBtn(r, "Güncelleme kaynağı", false, onUpdSrc);
   uiBtn(r, "Ekranı döndür", false, onSetRot);
   uiBtn(r, "Hava konumu", false, onSetLoc);
   uiBtn(r, "Telegram", false, onSetTg);
@@ -673,7 +791,7 @@ static void tickSet() {
   uint32_t up = millis() / 1000;
   char b[360];
   snprintf(b, sizeof(b),
-           "Ağ: %s   Sinyal: %d dBm\nIP: %s   Adres: %s.local\nSürüm: %s   Telegram: %s\nÇalışma: %lu sa %lu dk   Bellek: %u KB boş",
+           "Ağ: %s   Sinyal: %d dBm\nIP: %s   Adres: %s.local\nSürüm: %s   Telegram: %s   Yapay zeka: %s\nÇalışma: %lu sa %lu dk   Bellek: %u KB boş",
            WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.localIP().toString().c_str(), "crowhub", FW_VERSION,
            telegramConfigured() ? "açık" : "kapalı", efektAnahtarVar() ? "anahtar var" : "anahtar yok", (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60), (unsigned)(ESP.getFreeHeap() / 1024));
   uiSetText(setInfo, b);
@@ -688,6 +806,7 @@ static void placeTabs() {
 
 void hubUiOnRotate() {
   if (tv) placeTabs();
+  lampSig = "#";  // kart genisligi yone gore: bir sonraki turda yeniden kur
 }
 
 volatile int devTabReq = -1;  // geliştirme: /dev/tab, /dev/rot (screenshot.cpp)
@@ -705,15 +824,16 @@ static void layoutSky(int w) {
     lv_obj_set_size(o, P(ww), P(hh));
     lv_obj_set_style_radius(o, P(7), 0);
   };
-  place(boxT, 6, 6, 150, 80);
-  place(boxW, 164, 6, 150, 80);
+  place(boxT, 6, 6, 122, 60);
+  place(boxW, 192, 6, 122, 60);
   place(boxF, 6, 134, 308, 46);
+  place(alertOv, 6, 132, 308, 48);
   lv_obj_set_pos(lblWxDesc, P(6), P(2));
-  lv_obj_set_pos(lblTemp, P(4), P(26));
+  lv_obj_set_pos(lblTemp, P(4), P(22));
   lv_obj_align_to(lblTempC, lblTemp, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
   lv_obj_set_pos(lblWindT, P(6), P(2));
   lv_obj_align(lblWindDir, LV_ALIGN_TOP_RIGHT, -P(6), P(2));
-  lv_obj_set_pos(lblWindVal, P(4), P(26));
+  lv_obj_set_pos(lblWindVal, P(4), P(22));
   lv_obj_align_to(lblWindU, lblWindVal, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
   for (int i = 0; i < 7; i++) {
     place(fcCol[i], 10 + i * 43 + 1, 136, 41, 42);
@@ -866,6 +986,35 @@ lv_obj_t* hubUiCreate() {
   lv_obj_set_width(lblNews, LV_SIZE_CONTENT);
   lv_label_set_long_mode(lblNews, LV_LABEL_LONG_CLIP);
   lv_obj_set_y(lblNews, 1);
+  // Uyari seridi (tum sekmelerde, ekranin en ustunde): hava / deprem uyarilari, "Anladim" ile onaylanir
+  cardAlert = lv_obj_create(scr);
+  lv_obj_set_size(cardAlert, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(cardAlert, lv_color_hex(0x5A1020), 0);
+  lv_obj_set_style_bg_opa(cardAlert, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(cardAlert, C_RED, 0);
+  lv_obj_set_style_border_width(cardAlert, 2, 0);
+  lv_obj_set_style_radius(cardAlert, 0, 0);
+  lv_obj_set_style_pad_all(cardAlert, 6, 0);
+  lv_obj_set_style_pad_gap(cardAlert, 8, 0);
+  lv_obj_set_flex_flow(cardAlert, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(cardAlert, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(cardAlert, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* acol = lv_obj_create(cardAlert);
+  lv_obj_set_style_bg_opa(acol, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(acol, 0, 0);
+  lv_obj_set_style_pad_all(acol, 0, 0);
+  lv_obj_set_style_pad_gap(acol, 0, 0);
+  lv_obj_set_flex_grow(acol, 1);
+  lv_obj_set_height(acol, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(acol, LV_FLEX_FLOW_COLUMN);
+  lv_obj_remove_flag(acol, LV_OBJ_FLAG_SCROLLABLE);
+  lblAlertTitle = uiLabel(acol, "", &noto20, lv_color_hex(0xFFFFFF));
+  lblAlertDetail = uiLabel(acol, "", &noto16, lv_color_hex(0xFFD6DC));
+  lv_obj_set_width(lblAlertDetail, LV_PCT(100));
+  lv_label_set_long_mode(lblAlertDetail, LV_LABEL_LONG_DOT);
+  uiBtn(cardAlert, "Anladım", false, onAlertAck, LV_SIZE_CONTENT, 38);
+  lv_obj_add_flag(cardAlert, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_to_index(cardAlert, 0);  // sekmelerin ustunde
   buildHome();
   buildLamps();
   buildFx();

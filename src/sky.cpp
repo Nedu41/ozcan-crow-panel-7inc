@@ -276,6 +276,7 @@ static void setOpenSkyPalette(Scene sc, const SkyTime& st) {
   S.setPaletteColor(P_FLASH, c565(165, 163, 148));    // ay denizleri
 }
 
+static float chromaK = 1.95f;  // yayinlanan paletin doygunluk carpani (setScenePalette ayarlar)
 static void setScenePalette(Scene sc, bool day) {
   SkyTime st = skyTime();
   if ((sc == SC_CLEAR || sc == SC_PARTLY) && st.valid) {
@@ -294,9 +295,9 @@ static void setScenePalette(Scene sc, bool day) {
   static const RGB CLEAR_D[4] = {{20,70,160},{40,100,190},{70,135,215},{120,175,230}};
   static const RGB PARTLY_D[4] = {{30,80,165},{55,110,190},{85,140,210},{130,175,225}};
   static const RGB NIGHT[4] = {{4,8,26},{8,14,38},{12,22,52},{20,32,68}};
-  static const RGB CLOUDY[4] = {{70,80,95},{88,98,113},{108,118,133},{128,138,152}};
+  static const RGB CLOUDY[4] = {{104,108,114},{124,128,134},{144,148,154},{164,168,174}};  // notr gri
   static const RGB FOG[4] = {{120,124,130},{135,139,145},{150,154,160},{165,169,175}};
-  static const RGB RAIN[4] = {{38,46,58},{48,58,72},{58,70,86},{70,83,100}};
+  static const RGB RAIN[4] = {{78,82,88},{94,98,104},{110,114,120},{128,132,138}};  // notr gri
   static const RGB SNOW[4] = {{85,98,118},{105,118,138},{128,142,162},{152,166,186}};
   static const RGB STORM[4] = {{20,20,38},{28,28,50},{36,36,62},{44,44,74}};
 
@@ -318,7 +319,7 @@ static void setScenePalette(Scene sc, bool day) {
       break;
     case SC_FOG:     sky = FOG;  set3(cl, 205,208,212); set3(cd, 185,188,192); break;
     case SC_DRIZZLE:
-    case SC_RAIN:    sky = RAIN; set3(cl, 125,130,140); set3(cd, 88,93,104); set3(pr, 130,175,235); break;
+    case SC_RAIN:    sky = RAIN; set3(cl, 190,194,200); set3(cd, 140,144,152); set3(pr, 175,210,250); break;
     case SC_SNOW:    sky = SNOW; set3(cl, 220,225,232); set3(cd, 175,182,192); set3(pr, 250,252,255); break;
     case SC_THUNDER: sky = STORM; set3(cl, 95,95,115); set3(cd, 62,62,80); set3(pr, 120,160,225); break;
     default: break;
@@ -360,6 +361,8 @@ static void setScenePalette(Scene sc, bool day) {
   // P_FLASH sadece firtinada simsek icin; diger sahnelerde (ay gorundugunde)
   // ayin gri tonu: denizler (maria), kenar kararmasi, golge siniri. Palet 16 renk dolu.
   S.setPaletteColor(P_FLASH, sc == SC_THUNDER ? c565(255, 255, 215) : c565(165, 163, 148));
+  // gri havalarda (kapali, ciseleme, yagmur, sis, firtina) renk doygunlugu artirilmaz: gokyuzu gri kalsin
+  chromaK = (sc == SC_CLOUDY || sc == SC_DRIZZLE || sc == SC_RAIN || sc == SC_FOG || sc == SC_THUNDER) ? 0.25f : 1.95f;
 }
 
 // Animasyon durumu
@@ -863,7 +866,7 @@ static void stepLocked() {
     uint16_t c = S.pal[i];
     float r = ((c >> 11) & 31) * 8.2f, g = ((c >> 5) & 63) * 4.05f, b = (c & 31) * 8.2f;
     float m = (r + g + b) / 3.0f;
-    r = m + (r - m) * 1.95f; g = m + (g - m) * 1.95f; b = m + (b - m) * 1.95f;
+    r = m + (r - m) * chromaK; g = m + (g - m) * chromaK; b = m + (b - m) * chromaK;
     r *= 1.16f; g *= 1.16f; b *= 1.16f;
     bp[i] = c565((uint8_t)constrain(r, 0.f, 255.f), (uint8_t)constrain(g, 0.f, 255.f), (uint8_t)constrain(b, 0.f, 255.f));
   }

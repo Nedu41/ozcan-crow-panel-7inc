@@ -3,7 +3,7 @@
 #pragma once
 #include <lvgl.h>
 
-extern "C" { extern const lv_font_t noto16, noto20, noto28; }
+extern "C" { extern const lv_font_t noto16, noto20, noto28, dseg52, dseg64; }
 
 #define C_BG       lv_color_hex(0x14141A)
 #define C_CARD     lv_color_hex(0x1F1F28)
@@ -117,6 +117,11 @@ void uiRotate();                        // ekranı bir sonraki yöne döndür (k
 bool uiIsLandscape();
 void uiSetBacklight(int pct);           // 10..100
 int uiGetBacklight();
+void uiSetColorAdjust(int contrast, int gain, bool save);  // kontrast %50..130, renk parlakligi %40..100 (100/100 = degisiklik yok)
+int uiGetContrast();
+void uiSetSaturation(int sat, bool save);  // canlilik %80..220 (100 = degisiklik yok)
+int uiGetSaturation();
+int uiGetGain();
 // Metin girişi penceresi (ekran klavyesi). OK'ta cb(metin) çağrılır.
 typedef void (*UiPromptCb)(const char* text);
 void uiPrompt(const char* title, const char* initial, bool password, UiPromptCb cb);

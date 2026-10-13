@@ -18,7 +18,64 @@ static int backlightPct = 100;
 static lv_display_t* disp;
 
 // ------------------------------------------------------------------ ekran / dokunmatik bağlantısı
+// ---- Ekran renk ayari: kontrast (%50..130) ve renk parlakligi (%40..100). Arka isiktan bagimsiz, yazilim (flush'ta kanal tablosu)
+static int contrastPct = 100, gainPct = 100, satPct = 140;  // satPct: canlilik (doygunluk) %80..220
+static uint8_t lutR[32], lutG[64], lutB[32];
+static bool lutIdentity = true;
+static void buildLut() {
+  lutIdentity = contrastPct == 100 && gainPct == 100 && satPct == 100;
+  float c = contrastPct / 100.0f, g = gainPct / 100.0f;
+  auto f = [&](float v) {  // v: 0..1
+    float o = ((v - 0.5f) * c + 0.5f) * g;
+    return o < 0 ? 0.f : o > 1 ? 1.f : o;
+  };
+  for (int i = 0; i < 32; i++) { lutR[i] = lutB[i] = (uint8_t)(f(i / 31.0f) * 31.0f + 0.5f); }
+  for (int i = 0; i < 64; i++) lutG[i] = (uint8_t)(f(i / 63.0f) * 63.0f + 0.5f);
+}
+void uiSetColorAdjust(int contrast, int gain, bool save) {
+  contrastPct = constrain(contrast, 50, 130);
+  gainPct = constrain(gain, 40, 100);
+  buildLut();
+  if (save) {
+    Preferences p;
+    p.begin("ui", false);
+    p.putUChar("ct", contrastPct);
+    p.putUChar("dg", gainPct);
+    p.end();
+  }
+  lv_obj_invalidate(lv_screen_active());
+}
+void uiSetSaturation(int sat, bool save) {
+  satPct = constrain(sat, 80, 220);
+  buildLut();
+  if (save) {
+    Preferences p;
+    p.begin("ui", false);
+    p.putUChar("sa", (uint8_t)(satPct / 2));  // 40..110 -> uint8
+    p.end();
+  }
+  lv_obj_invalidate(lv_screen_active());
+}
+int uiGetSaturation() { return satPct; }
+int uiGetContrast() { return contrastPct; }
+int uiGetGain() { return gainPct; }
+
 static void flushCb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
+  if (!lutIdentity) {
+    uint16_t* p = (uint16_t*)px;
+    uint32_t n = (uint32_t)(a->x2 - a->x1 + 1) * (a->y2 - a->y1 + 1);
+    const int sat = satPct * 128 / 100;  // 128 = %100
+    for (uint32_t i = 0; i < n; i++) {
+      uint16_t c = p[i];
+      int r = (c >> 11) << 3, g = ((c >> 5) & 63) << 2, b = (c & 31) << 3;
+      if (sat != 128) {  // doygunluk: parlaklik (luma) etrafinda renk farkini buyut
+        int y = (r * 77 + g * 150 + b * 29) >> 8;
+        r = y + (((r - y) * sat) >> 7); g = y + (((g - y) * sat) >> 7); b = y + (((b - y) * sat) >> 7);
+        r = r < 0 ? 0 : r > 255 ? 255 : r; g = g < 0 ? 0 : g > 255 ? 255 : g; b = b < 0 ? 0 : b > 255 ? 255 : b;
+      }
+      p[i] = (uint16_t)((lutR[r >> 3] << 11) | (lutG[g >> 2] << 5) | lutB[b >> 3]);
+    }
+  }
   lcd.pushImage(a->x1, a->y1, a->x2 - a->x1 + 1, a->y2 - a->y1 + 1, (lgfx::rgb565_t*)px);
   lv_display_flush_ready(d);
 }
@@ -70,6 +127,10 @@ void guiInit() {
   p.begin("ui", false);
   rot = p.getUChar("rot", 0) & 3;
   backlightPct = p.getUChar("bl", 100);
+  contrastPct = p.getUChar("ct", 100);
+  gainPct = p.getUChar("dg", 100);
+  satPct = p.getUChar("sa", 70) * 2;  // ilk kurulumda %140
+  buildLut();
   p.end();
 
   boardPowerSeq();
@@ -131,9 +192,20 @@ static void showHome();
 static void startConnect(const String& ssid, const String& pass, bool fromBoot);
 
 // ---- Ağ listesi
+// Kayıtlı ağ mı? (şifresi listede varsa tekrar sorulmaz)
+static bool savedNet(const String& ssid, String* pass = nullptr) {
+  for (int i = 0;; i++) {
+    String a, b;
+    if (!wifiNetsGet(i, a, b)) return false;
+    if (a == ssid) { if (pass) *pass = b; return true; }
+  }
+}
+
 static void onNetClick(lv_event_t* e) {
   const char* s = (const char*)lv_event_get_user_data(e);
-  showPass(String(s));
+  String ssid(s), pw;
+  if (savedNet(ssid, &pw)) startConnect(ssid, pw, false);  // kayıtlı: şifre sorma (yanlışsa bağlanamayınca şifre ekranı açılır)
+  else showPass(ssid);
 }
 
 static void fillList(int n) {
@@ -174,7 +246,7 @@ static void fillList(int n) {
     lv_obj_set_flex_grow(nl, 1);
     lv_obj_set_style_text_color(nl, C_TEXT, 0);
     lv_obj_t* sl = lv_label_create(b);
-    lv_label_set_text_fmt(sl, "%s  %d dBm", open ? "açık" : "şifreli", rssi);
+    lv_label_set_text_fmt(sl, "%s  %d dBm", savedNet(ssid) ? "kayıtlı" : (open ? "açık" : "şifreli"), rssi);
     lv_obj_set_style_text_font(sl, &noto16, 0);
     lv_obj_set_style_text_color(sl, C_DIM, 0);
     lv_obj_add_event_cb(b, onNetClick, LV_EVENT_CLICKED, names[shown]);

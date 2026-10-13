@@ -2208,8 +2208,27 @@ function renderSistem() {
     document.getElementById("content").innerHTML = `
     <div class="settings-container"><h3>⚙️ Sistem</h3><div id="sysInfo">…</div></div>
     <div class="settings-container"><h3>Ekran</h3>
-        <label>Parlaklık <span id="blL"></span></label><input type="range" id="blS" min="10" max="100" style="width:100%" oninput="sysBl()">
+        <label>Parlaklık (arka ışık) <span id="blL"></span></label><input type="range" id="blS" min="10" max="100" style="width:100%" oninput="sysBl()">
+        <label>Kontrast <span id="ctL"></span></label><input type="range" id="ctS" min="50" max="130" style="width:100%" oninput="sysCol()">
+        <label>Renk parlaklığı <span id="dgL"></span></label><input type="range" id="dgS" min="40" max="100" style="width:100%" oninput="sysCol()">
+        <label>Canlılık <span id="saL"></span></label><input type="range" id="saS" min="80" max="220" style="width:100%" oninput="sysCol()">
         <button class="btn" onclick="fetch('/api/sistem/rot')">Ekranı döndür</button>
+    </div>
+    <div class="settings-container"><h3>Yazılım güncelleme</h3>
+        <div id="updInfo">…</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">
+            <input id="updRepo" placeholder="GitHub: kullanıcı/depo" style="flex:1;min-width:160px">
+            <button class="btn" onclick="updKaynak()">Kaydet</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn" onclick="updDenetle()">Güncellemeyi denetle</button>
+            <button class="btn" onclick="updGithub()">GitHub'dan güncelle</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input type="file" id="updFile" accept=".bin">
+            <button class="btn" onclick="updDosya()">Dosyadan güncelle</button>
+        </div>
+        <progress id="updPr" max="100" value="0" style="width:100%;display:none;margin-top:6px"></progress>
     </div>
     <div class="settings-container"><h3>Telegram</h3>
         <div id="tgState" style="margin-bottom:6px"></div>
@@ -2231,8 +2250,12 @@ function renderSistem() {
         if (!s) return;
         s.innerHTML = `Ağ: ${escHtml(j.ssid)} &nbsp; Sinyal: ${j.rssi} dBm<br>IP: ${j.ip} &nbsp; Adres: crowhub.local<br>Sürüm: ${j.fw}<br>Çalışma: ${Math.floor(up / 3600)} sa ${Math.floor(up / 60) % 60} dk &nbsp; Bellek: ${Math.round(j.heap / 1024)} KB boş`;
         document.getElementById("blS").value = j.bl; document.getElementById("blL").textContent = "%" + j.bl;
+        document.getElementById("ctS").value = j.ct; document.getElementById("ctL").textContent = "%" + j.ct;
+        document.getElementById("dgS").value = j.dg; document.getElementById("dgL").textContent = "%" + j.dg;
+        document.getElementById("saS").value = j.sa; document.getElementById("saL").textContent = "%" + j.sa;
         document.getElementById("tgState").innerHTML = j.tg ? `<span style="color:#8fe0a0">● Açık</span> (sohbet: ${escHtml(j.tg_chat)}). Değiştirmek için token'ı yeniden girin.` : `<span style="color:#ff9a9a">● Kapalı</span> — token ve sohbet no girin.`;
         document.getElementById("tgChat").value = j.tg_chat || "";
+        updDurum();
     });
 }
 let blT = null;
@@ -2240,6 +2263,48 @@ function sysBl() {
     const v = document.getElementById("blS").value;
     document.getElementById("blL").textContent = "%" + v;
     clearTimeout(blT); blT = setTimeout(() => fetch("/api/sistem/set?bl=" + v), 300);
+}
+let updT = null;
+function updDurum() {
+    clearTimeout(updT);
+    fetch("/api/guncelle").then(r => r.json()).then(j => {
+        const i = document.getElementById("updInfo");
+        if (!i) return;
+        i.innerHTML = `Çalışan sürüm: <b>${escHtml(j.surum)}</b>${j.son ? " &nbsp; Son yayın: <b>" + escHtml(j.son) + "</b>" + (j.yeni ? " <span style='color:#2bff8a'>(yeni!)</span>" : "") : ""}<br>${escHtml(j.mesaj || "")}`;
+        const rp = document.getElementById("updRepo");
+        if (rp && !rp.value) rp.value = j.kaynak || "";
+        const pr = document.getElementById("updPr");
+        if (pr) { pr.style.display = j.durum == 2 ? "block" : "none"; pr.value = j.ilerleme; }
+        if (j.durum == 1 || j.durum == 2 || j.durum == 3) updT = setTimeout(updDurum, 900);
+    }).catch(() => { updT = setTimeout(updDurum, 2500); });
+}
+function updKaynak() {
+    const v = document.getElementById("updRepo").value.trim();
+    fetch("/api/guncelle/kaynak?repo=" + encodeURIComponent(v)).then(() => { toast("✓ Kaynak kaydedildi"); updDurum(); });
+}
+function updDenetle() { fetch("/api/guncelle/denetle").then(() => setTimeout(updDurum, 600)); }
+function updGithub() {
+    if (!confirm("Son yayın indirilip yüklensin mi? Cihaz yeniden başlar.")) return;
+    fetch("/api/guncelle/github").then(() => setTimeout(updDurum, 600));
+}
+function updDosya() {
+    const f = document.getElementById("updFile").files[0];
+    if (!f) { toast("Önce .bin dosyası seçin", true); return; }
+    if (!confirm(f.name + " yüklensin mi? Cihaz yeniden başlar.")) return;
+    const x = new XMLHttpRequest(), fd = new FormData(), pr = document.getElementById("updPr");
+    fd.append("firmware", f, f.name);
+    pr.style.display = "block";
+    x.upload.onprogress = e => { if (e.lengthComputable) pr.value = Math.round(e.loaded * 100 / e.total); };
+    x.onload = () => { if (x.status == 200) toast("✓ Yüklendi, cihaz yeniden başlıyor…"); else toast(x.responseText || "Hata", true); };
+    x.onerror = () => toast("Bağlantı kesildi (cihaz yeniden başlıyor olabilir)", true);
+    x.open("POST", "/update");
+    x.send(fd);
+}
+let colT = null;
+function sysCol() {
+    const c = document.getElementById("ctS").value, g = document.getElementById("dgS").value, a = document.getElementById("saS").value;
+    document.getElementById("ctL").textContent = "%" + c; document.getElementById("dgL").textContent = "%" + g; document.getElementById("saL").textContent = "%" + a;
+    clearTimeout(colT); colT = setTimeout(() => fetch("/api/sistem/set?ct=" + c + "&dg=" + g + "&sa=" + a), 300);
 }
 function sysTg() {
     const t = document.getElementById("tgTok").value.trim(), c = document.getElementById("tgChat").value.trim();
