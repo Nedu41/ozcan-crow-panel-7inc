@@ -2068,7 +2068,11 @@ function renderHome() {
             <div id="hDate" style="text-align:right;color:#dadae4"></div>
         </div>
     </div>
-    <div class="settings-container"><div id="hWx">Hava durumu yükleniyor…</div></div>
+    <div class="settings-container" style="padding:0;overflow:hidden;position:relative">
+        <img id="hSky" src="/api/sky.bmp" style="width:100%;display:block;image-rendering:pixelated" alt="">
+        <div id="hWx" style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.5);padding:8px 12px;border-radius:10px">Hava durumu yükleniyor…</div>
+        <div id="hWx2" style="position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);padding:6px 12px;font-size:.9em"></div>
+    </div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em">Dünya haberleri</div><div id="hNews" style="margin-top:6px">Haberler yükleniyor…</div></div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Lambalar</div><div id="hLamps"></div></div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Yapay zeka efektleri</div><div id="hFx"></div></div>`;
@@ -2085,16 +2089,16 @@ function refreshHome() {
     fetchStatus().then(() => {
         const w = CURRENT_WEATHER || {};
         let h;
+        let h2 = "";
         if (w.description === "OK") {
-            h = `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            h = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
                 <div style="font-size:2.6em;color:#ffb27a;font-weight:bold">${Math.round(w.temp)}°</div>
-                <div><div style="font-size:1.4em">${wmoText(w.weathercode)}</div><div style="color:#9a9aae">${escHtml(w.city_name || "")}</div></div></div>
-                <div style="margin-top:8px">Rüzgâr ${Math.round(w.wind_speed)} km/s ${escHtml(w.wind_direction || "")} &nbsp; Nem %${w.humidity} &nbsp; Bulut %${w.clouds}</div>
-                <div style="color:#9a9aae;margin-top:4px">Gün doğumu ${escHtml(w.sunrise_time || "")} &nbsp; Gün batımı ${escHtml(w.sunset_time || "")}</div>`;
+                <div><div style="font-size:1.3em">${wmoText(w.weathercode)}</div><div style="color:#b8b8cc;font-size:.85em">${escHtml(w.city_name || "")}</div></div></div>`;
+            h2 = `Rüzgâr ${Math.round(w.wind_speed)} km/s ${escHtml(w.wind_direction || "")} &nbsp; Nem %${w.humidity} &nbsp; Bulut %${w.clouds}<br><span style="color:#b8b8cc">Gün doğumu ${escHtml(w.sunrise_time || "")} &nbsp; Gün batımı ${escHtml(w.sunset_time || "")}</span>`;
         } else if (w.description === "NO_LOCATION") {
             h = `Konum ayarlanmamış. <a href="/weather" onclick="route('/weather');return false;" style="color:#7fe0dc">Oto-Hava</a> sayfasından şehir girin.`;
         } else h = "Hava verisi alınamadı";
-        set("hWx", h);
+        set("hWx", h); set("hWx2", h2);
         let l = "";
         DEVICES.forEach((d, i) => {
             const st = STATUS[d.name] || {};
@@ -2115,9 +2119,16 @@ function refreshHome() {
         set("hFx", h);
     }).catch(() => {});
 }
+function skyLoop() {
+    const im = document.getElementById("hSky");
+    if (location.pathname !== "/" || !im) { setTimeout(skyLoop, 1000); return; }
+    const next = () => setTimeout(skyLoop, 600);
+    im.onload = next; im.onerror = () => setTimeout(skyLoop, 3000);
+    im.src = "/api/sky.bmp?t=" + Date.now();
+}
 function showNews() {
     const e = document.getElementById("hNews");
-    if (e && NEWS_ITEMS.length) e.textContent = NEWS_ITEMS[newsIdx++ % NEWS_ITEMS.length];
+    if (e && NEWS_ITEMS.length) e.innerHTML = NEWS_ITEMS.map(t => "• " + escHtml(t)).join("<br><br>");
 }
 function toggleHome(i, r) {
     const dev = DEVICES[i], st = STATUS[dev.name] || {};
@@ -2276,8 +2287,8 @@ window.onload = function() {
     setInterval(update, 15000);
     setInterval(() => { if (location.pathname === '/log') renderEvents(); }, 10000);
     setInterval(refreshHome, 20000);
-    setInterval(showNews, 8000);
-    setInterval(refreshEfekt, 3000);
+    skyLoop();
+        setInterval(refreshEfekt, 3000);
 };
 </script>
 </body>

@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 #include "efekt.h"
+#include "sky.h"
 #include <vector>
 #include "app_state.h"
 #include "storage.h"

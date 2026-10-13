@@ -13,6 +13,7 @@
 #include "storage.h"
 #include "telegram.h"
 #include "efekt.h"
+#include "sky.h"
 #include "ui.h"
 #include "ui_common.h"
 #include "web_server.h"
@@ -54,6 +55,15 @@ static void setDot(lv_obj_t* d, bool ok) {
 
 // ------------------------------------------------------------------ ANA
 static lv_obj_t *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
+static lv_obj_t *skyCard, *skyImg, *boxT, *boxW, *boxF, *lblTempC, *lblWindT, *lblWindDir, *lblWindVal, *lblWindU;
+static const int IC_W = 26, IC_H = 22;
+static lv_obj_t *fcCol[7], *fcDay[7], *fcTmp[7], *fcIcon[7];
+static uint8_t* fcBuf[7];
+static int fcN = 0, fcCode[7], fcMax[7], fcMin[7];
+static uint32_t fcSig = 0;
+static void drawMiniIcon(lv_obj_t* cv, int code, bool past);
+static lv_image_dsc_t skyDsc;
+static int skyCardW = 0;
 static lv_obj_t *cardAlert, *lblAlertTitle, *lblAlertDetail, *lblNews;
 static String alertId;
 static String lastNews;
@@ -83,23 +93,67 @@ static void buildHome() {
   lblDate = uiLabel(r, "", &noto20, C_TEXT);
   lv_obj_set_style_text_align(lblDate, LV_TEXT_ALIGN_RIGHT, 0);
 
-  lv_obj_t* wx = uiCard(tabHome);
-  lv_obj_t* wr = uiRow(wx);
-  lblTemp = uiLabel(wr, "--°", &lv_font_montserrat_48, C_ORANGE);
-  lv_obj_t* col = lv_obj_create(wr);
-  lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(col, 0, 0);
-  lv_obj_set_style_pad_all(col, 0, 0);
-  lv_obj_set_flex_grow(col, 1);
-  lv_obj_set_height(col, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-  lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
-  lblWxDesc = uiLabel(col, "Hava durumu yükleniyor…", &noto28, C_TEXT);
-  lblWxCity = uiLabel(col, "", &noto16, C_DIM);
-  lv_obj_set_width(lblWxCity, LV_PCT(100));
-  lv_label_set_long_mode(lblWxCity, LV_LABEL_LONG_DOT);
-  lblWxMore = uiLabel(wx, "", &noto20, C_TEXT);
-  lblSun = uiLabel(wx, "", &noto16, C_DIM);
+  // Hava karti: ev-lamba ekraninin ayni duzeni - canli gokyuzu arka plan, sicaklik/ruzgar kutulari,
+  // 7 gunluk tahmin seridi (kutular seffaf, yalniz cerceve). Olcek kart genisligine gore (layoutSky).
+  skyInit();
+  skyCard = lv_obj_create(tabHome);
+  lv_obj_set_style_bg_color(skyCard, lv_color_black(), 0);
+  lv_obj_set_width(skyCard, LV_PCT(100));
+  lv_obj_set_height(skyCard, 380);
+  lv_obj_set_style_pad_all(skyCard, 0, 0);
+  lv_obj_set_style_radius(skyCard, 12, 0);
+  lv_obj_set_style_border_color(skyCard, C_FRAME, 0);
+  lv_obj_set_style_border_width(skyCard, 3, 0);
+  lv_obj_set_style_clip_corner(skyCard, true, 0);
+  lv_obj_remove_flag(skyCard, LV_OBJ_FLAG_SCROLLABLE);
+  skyDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  skyDsc.header.cf = LV_COLOR_FORMAT_RGB565;
+  skyDsc.header.w = SKY_W;
+  skyDsc.header.h = SKY_H;
+  skyDsc.header.stride = SKY_W * 2;
+  skyDsc.data_size = SKY_W * SKY_H * 2;
+  skyDsc.data = (const uint8_t*)skyRGB565();
+  skyImg = lv_image_create(skyCard);
+  lv_image_set_src(skyImg, &skyDsc);
+  lv_image_set_pivot(skyImg, 0, 0);
+  lv_obj_set_pos(skyImg, 0, 0);
+
+  auto box = [&](lv_color_t col) {
+    lv_obj_t* o = lv_obj_create(skyCard);
+    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(o, col, 0);
+    lv_obj_set_style_border_width(o, 2, 0);
+    lv_obj_set_style_pad_all(o, 0, 0);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+    return o;
+  };
+  boxT = box(C_ORANGE);
+  lblWxDesc = uiLabel(boxT, "Hava durumu yükleniyor…", &noto28, C_TEXT);
+  lblTemp = uiLabel(boxT, "--", &lv_font_montserrat_48, C_ORANGE);
+  lblTempC = uiLabel(boxT, "°C", &noto28, C_ORANGE);
+  boxW = box(C_CYAN);
+  lblWindT = uiLabel(boxW, "RÜZGAR", &noto20, C_DIM);
+  lblWindDir = uiLabel(boxW, "", &noto28, C_TEXT);
+  lblWindVal = uiLabel(boxW, "--", &lv_font_montserrat_48, C_CYAN);
+  lblWindU = uiLabel(boxW, "km/s", &noto28, C_CYAN);
+  boxF = box(C_DIM);
+  for (int i = 0; i < 7; i++) {
+    fcCol[i] = box(C_ORANGE);
+    lv_obj_set_style_border_opa(fcCol[i], LV_OPA_TRANSP, 0);  // yalniz bugun cerceveli
+    fcDay[i] = uiLabel(fcCol[i], "", &noto16, C_TEXT);
+    fcTmp[i] = uiLabel(fcCol[i], "", &noto16, C_CYAN);
+    fcBuf[i] = (uint8_t*)heap_caps_calloc(IC_W * IC_H, 4, MALLOC_CAP_SPIRAM);
+    fcIcon[i] = lv_canvas_create(fcCol[i]);
+    lv_canvas_set_buffer(fcIcon[i], fcBuf[i], IC_W, IC_H, LV_COLOR_FORMAT_ARGB8888);
+    lv_image_set_pivot(fcIcon[i], 0, 0);
+  }
+  // Gizli etiketler (tickHome ortak kodu icin)
+  lblWxCity = uiLabel(skyCard, "", &noto16, C_DIM);
+  lblWxMore = uiLabel(skyCard, "", &noto16, C_DIM);
+  lblSun = uiLabel(skyCard, "", &noto16, C_DIM);
+  lv_obj_add_flag(lblWxCity, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(lblWxMore, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(lblSun, LV_OBJ_FLAG_HIDDEN);
 
   cardAlert = uiCard(tabHome);
   lv_obj_set_style_border_color(cardAlert, C_ORANGE, 0);
@@ -132,34 +186,52 @@ static void tickHome() {
   // hava
   if (takeMutex(weatherMutex)) {
     String desc = CURRENT_WEATHER_DOC["description"] | "";
-    String city = CURRENT_WEATHER_DOC["city_name"] | "";
     float temp = CURRENT_WEATHER_DOC["temp"] | 0.0f;
     float wind = CURRENT_WEATHER_DOC["wind_speed"] | 0.0f;
     String wdir = CURRENT_WEATHER_DOC["wind_direction"] | "";
-    int hum = CURRENT_WEATHER_DOC["humidity"] | 0;
-    int clouds = CURRENT_WEATHER_DOC["clouds"] | 0;
     int code = CURRENT_WEATHER_DOC["weathercode"] | -1;
-    String sr = CURRENT_WEATHER_DOC["sunrise_time"] | "";
-    String ss = CURRENT_WEATHER_DOC["sunset_time"] | "";
+    int n = 0, c[7], mx[7], mn[7];
+    for (JsonArray d : CURRENT_WEATHER_DOC["fc"].as<JsonArray>()) {
+      if (n >= 7) break;
+      c[n] = d[0] | -1; mx[n] = d[1] | 0; mn[n] = d[2] | 0; n++;
+    }
     xSemaphoreGive(weatherMutex);
     if (desc == "OK") {
-      snprintf(buf, sizeof(buf), "%.0f°", temp);
+      snprintf(buf, sizeof(buf), "%.0f", temp);
       uiSetText(lblTemp, buf);
       uiSetText(lblWxDesc, wmoText(code)[0] ? wmoText(code) : "Hava durumu");
-      uiSetText(lblWxCity, city.c_str());
-      snprintf(buf, sizeof(buf), "Rüzgâr %.0f km/s %s   Nem %%%d   Bulut %%%d", wind, wdir.c_str(), hum, clouds);
-      uiSetText(lblWxMore, buf);
-      snprintf(buf, sizeof(buf), "Gün doğumu %s   Gün batımı %s", sr.c_str(), ss.c_str());
-      uiSetText(lblSun, buf);
+      uiSetText(lblWindDir, wdir.c_str());
+      snprintf(buf, sizeof(buf), "%.1f", wind);
+      uiSetText(lblWindVal, buf);
+      lv_obj_align_to(lblTempC, lblTemp, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
+      lv_obj_align_to(lblWindU, lblWindVal, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
     } else if (desc == "NO_LOCATION") {
-      uiSetText(lblTemp, "");
-      uiSetText(lblWxDesc, "Konum ayarlanmamış");
-      uiSetText(lblWxCity, "Web arayüzü > Hava ayarlarından şehir girin");
-      uiSetText(lblWxMore, "");
-      uiSetText(lblSun, "");
+      uiSetText(lblWxDesc, "Konum ayarlanmamış (Ayar sayfası)");
     } else if (desc == "FETCH_ERROR") {
       uiSetText(lblWxDesc, "Hava verisi alınamadı");
-      uiSetText(lblWxCity, city.c_str());
+    }
+    // tahmin seridi: degisince ikonlari yeniden ciz
+    uint32_t sig = 5381 + n;
+    for (int i = 0; i < n; i++) sig = sig * 33 + c[i] * 7 + mx[i] * 3 + mn[i];
+    struct tm tt;
+    int todayW = getLocalTime(&tt, 0) ? tt.tm_wday : -1;
+    sig = sig * 33 + todayW + 1;
+    if (sig != fcSig && desc == "OK") {
+      fcSig = sig;
+      static const char* DAYS[7] = {"Pz", "Pt", "Sa", "Ça", "Pe", "Cu", "Ct"};
+      for (int i = 0; i < 7; i++) {
+        bool has = i < n;
+        lv_obj_set_style_opa(fcCol[i], has ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        if (!has) continue;
+        bool today = i == 1, past = i == 0;
+        uiSetText(fcDay[i], todayW < 0 ? "--" : (today ? "BUGÜN" : DAYS[(todayW + i + 6) % 7]));
+        lv_obj_set_style_text_color(fcDay[i], today ? C_ORANGE : past ? C_DIM : C_TEXT, 0);
+        snprintf(buf, sizeof(buf), "%d/%d", mx[i], mn[i]);
+        uiSetText(fcTmp[i], buf);
+        lv_obj_set_style_text_color(fcTmp[i], past ? C_DIM : C_CYAN, 0);
+        lv_obj_set_style_border_opa(fcCol[i], today ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        drawMiniIcon(fcIcon[i], c[i], past);
+      }
     }
   }
 
@@ -184,20 +256,26 @@ static void tickHome() {
   String news;
   if (takeMutex(newsMutex)) { news = NEWS_TICKER_TEXT; xSemaphoreGive(newsMutex); }
   if (news.length()) {
-    // başlıklar "     +++     " ile ayrılı; 6 sn'de bir sıradaki gösterilir
+    // başlıklar "     +++     " ile ayrılı; sayfa başına 4 başlık, 12 sn'de bir sonraki sayfa
     static const char* SEP = "     +++     ";
     int count = 1;
     for (int p = news.indexOf(SEP); p >= 0; p = news.indexOf(SEP, p + 1)) count++;
-    int idx = (millis() / 6000) % count, start = 0;
-    for (int k = 0; k < idx; k++) start = news.indexOf(SEP, start) + strlen(SEP);
-    int end = news.indexOf(SEP, start);
-    String one = end < 0 ? news.substring(start) : news.substring(start, end);
-    if (one != lastNews) {
-      lastNews = one;
-      lv_label_set_text(lblNews, one.c_str());
+    const int PER = 4;
+    int pages = (count + PER - 1) / PER, base = ((millis() / 12000) % pages) * PER;
+    String txt;
+    int start = 0;
+    for (int k = 0; k < count; k++) {
+      int end = news.indexOf(SEP, start);
+      String one = end < 0 ? news.substring(start) : news.substring(start, end);
+      if (k >= base && k < base + PER) txt += String(txt.length() ? "\n" : "") + "- " + one;
+      if (end < 0) break;
+      start = end + strlen(SEP);
     }
-  }
-}
+    if (txt != lastNews) {
+      lastNews = txt;
+      lv_label_set_text(lblNews, txt.c_str());
+    }
+  }}
 
 // ------------------------------------------------------------------ LAMBALAR
 struct CardRef { int dev; int relay; };
@@ -584,6 +662,103 @@ volatile int devTabReq = -1;  // geliştirme: /dev/tab, /dev/rot (screenshot.cpp
 volatile bool devRotReq = false;
 volatile int devTimerReq = -1;
 
+// ---- hava karti: yerlesim (sahne koordinatlari x olcek) ve mini ikonlar
+static void layoutSky(int w) {
+  float sc = (w - 6) / (float)SKY_W;
+  auto P = [&](float v) { return (int)(v * sc + 0.5f); };
+  lv_image_set_scale(skyImg, (int)(256 * sc));
+  lv_obj_set_height(skyCard, P(SKY_H) + 6);
+  auto place = [&](lv_obj_t* o, float x, float y, float ww, float hh) {
+    lv_obj_set_pos(o, P(x), P(y));
+    lv_obj_set_size(o, P(ww), P(hh));
+    lv_obj_set_style_radius(o, P(7), 0);
+  };
+  place(boxT, 6, 6, 150, 80);
+  place(boxW, 164, 6, 150, 80);
+  place(boxF, 6, 134, 308, 46);
+  lv_obj_set_pos(lblWxDesc, P(6), P(2));
+  lv_obj_set_pos(lblTemp, P(4), P(26));
+  lv_obj_align_to(lblTempC, lblTemp, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
+  lv_obj_set_pos(lblWindT, P(6), P(2));
+  lv_obj_align(lblWindDir, LV_ALIGN_TOP_RIGHT, -P(6), P(2));
+  lv_obj_set_pos(lblWindVal, P(4), P(26));
+  lv_obj_align_to(lblWindU, lblWindVal, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
+  for (int i = 0; i < 7; i++) {
+    place(fcCol[i], 10 + i * 43 + 1, 136, 41, 42);
+    lv_obj_set_pos(fcDay[i], 0, 0);
+    lv_obj_set_pos(fcTmp[i], 0, P(11));
+    lv_obj_set_width(fcDay[i], P(41));
+    lv_obj_set_width(fcTmp[i], P(41));
+    lv_obj_set_style_text_align(fcDay[i], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(fcTmp[i], LV_TEXT_ALIGN_CENTER, 0);
+    lv_image_set_scale(fcIcon[i], (int)(256 * sc * 0.75f));
+    lv_obj_set_pos(fcIcon[i], P(41 / 2.0f - IC_W * 0.75f / 2), P(23));
+  }
+}
+
+struct Ic {  // ARGB8888 tuvale cizim (seffaf arka plan)
+  lv_obj_t* cv;
+  void px(int x, int y, lv_color_t c) { if ((unsigned)x < IC_W && (unsigned)y < IC_H) lv_canvas_set_px(cv, x, y, c, LV_OPA_COVER); }
+  void hline(int x, int y, int w, lv_color_t c) { for (int i = 0; i < w; i++) px(x + i, y, c); }
+  void rect(int x, int y, int w, int h, lv_color_t c) { for (int j = 0; j < h; j++) hline(x, y + j, w, c); }
+  void disc(int cx, int cy, int r, lv_color_t c) {
+    for (int dy = -r; dy <= r; dy++) { int hw = (int)sqrtf((float)(r * r - dy * dy)); hline(cx - hw, cy + dy, 2 * hw + 1, c); }
+  }
+  void line(int x0, int y0, int x1, int y1, lv_color_t c) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1, e = dx + dy;
+    for (;;) {
+      px(x0, y0, c);
+      if (x0 == x1 && y0 == y1) break;
+      int e2 = 2 * e;
+      if (e2 >= dy) { e += dy; x0 += sx; }
+      if (e2 <= dx) { e += dx; y0 += sy; }
+    }
+  }
+  void cloud(int cx, int cy, lv_color_t c) { disc(cx - 5, cy + 1, 4, c); disc(cx + 1, cy - 2, 5, c); disc(cx + 6, cy + 1, 4, c); rect(cx - 5, cy + 1, 11, 4, c); }
+};
+
+static void drawMiniIcon(lv_obj_t* cv, int code, bool past) {
+  lv_canvas_fill_bg(cv, lv_color_black(), LV_OPA_TRANSP);
+  Ic g{cv};
+  lv_color_t gray = lv_color_hex(0x969696);
+  lv_color_t sun = past ? gray : C_ORANGE, cloud = past ? gray : lv_color_white(), drop = past ? gray : C_CYAN;
+  int cx = IC_W / 2, cy = IC_H / 2;
+  int sc = code < 0 ? 0 : code == 0 ? 1 : (code == 1 || code == 2) ? 2 : (code == 45 || code == 48) ? 4 : (code >= 51 && code <= 57) ? 5
+         : ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) ? 5 : ((code >= 71 && code <= 77) || code == 85 || code == 86) ? 6 : code >= 95 ? 7 : 3;
+  switch (sc) {
+    case 1:
+      g.disc(cx, cy, 5, sun);
+      for (int a = 0; a < 8; a++) { float r = a * PI / 4; g.line(cx + cosf(r) * 7, cy + sinf(r) * 7, cx + cosf(r) * 9, cy + sinf(r) * 9, sun); }
+      break;
+    case 2: g.disc(cx - 4, cy - 3, 5, sun); g.cloud(cx + 2, cy + 2, cloud); break;
+    case 4: for (int k = -1; k <= 1; k++) g.hline(cx - 9, cy + k * 5, 18, gray); break;
+    case 5:
+      g.cloud(cx, cy - 3, cloud);
+      for (int k = -1; k <= 1; k++) g.line(cx + k * 5, cy + 5, cx + k * 5 - 2, cy + 9, drop);
+      break;
+    case 6: g.cloud(cx, cy - 3, cloud); for (int k = -1; k <= 1; k++) g.disc(cx + k * 5, cy + 7, 1, lv_color_white()); break;
+    case 7:
+      g.cloud(cx, cy - 3, cloud);
+      g.line(cx + 1, cy + 3, cx - 2, cy + 7, sun); g.line(cx - 2, cy + 7, cx + 2, cy + 7, sun); g.line(cx + 2, cy + 7, cx - 1, cy + 10, sun);
+      break;
+    case 0: break;
+    default: g.cloud(cx, cy, cloud); break;
+  }
+  lv_obj_invalidate(cv);
+}
+
+// Gokyuzu sahnesi: Ana sekmesi acikken ~10 kare/sn; kart genisligine gore olcek
+static void skyTick(lv_timer_t*) {
+  if (!tv || lv_tabview_get_tab_active(tv) != 0 || !skyImg) return;
+  int w = lv_obj_get_width(skyCard);
+  if (w != skyCardW && w > 40) {
+    skyCardW = w;
+    layoutSky(w);
+  }
+  skyStep();
+  lv_obj_invalidate(skyImg);
+}
+
 static void tick(lv_timer_t*) {
   if (devTabReq >= 0) { lv_tabview_set_active(tv, devTabReq, LV_ANIM_OFF); devTabReq = -1; }
   if (devRotReq) { devRotReq = false; uiRotate(); }
@@ -647,6 +822,7 @@ lv_obj_t* hubUiCreate() {
   buildSet();
   placeTabs();
   lv_timer_create(tick, 500, nullptr);
+  lv_timer_create(skyTick, 100, nullptr);
   efektStart();
   return scr;
 }

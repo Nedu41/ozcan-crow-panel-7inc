@@ -19,7 +19,7 @@ const unsigned long DEBOUNCE_DELAY_MS = 600000;    // manuel kontrolden sonra ot
 const unsigned long NEWS_UPDATE_INTERVAL = 900000; // 15 dk
 // Anadolu Ajansi dunya haberleri: ~15-22KB, yonlendirme yok, duz <title> (2026-09-27 dogrulandi)
 #define NEWS_RSS_URL "https://www.aa.com.tr/tr/rss/default?cat=dunya"
-const int NEWS_MAX_ITEMS = 6;
+const int NEWS_MAX_ITEMS = 16;
 
 // ---- Uyarilar (hava + deprem, bkz. alerts.cpp) ----
 #define ALERT_WIND_KMH 50            // gunluk max ruzgar hamlesi esigi (km/s)

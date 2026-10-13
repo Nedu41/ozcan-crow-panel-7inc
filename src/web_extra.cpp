@@ -6,6 +6,7 @@
 #include "app_state.h"
 #include "config.h"
 #include "efekt.h"
+#include "sky.h"
 #include "telegram.h"
 #include "ui.h"
 #include "ui_common.h"
@@ -14,6 +15,16 @@ extern AsyncWebServer server;
 extern volatile bool devRotReq;  // ui_hub.cpp: ekran yönünü LVGL döngüsünde değiştirir
 
 void webExtraRoutes() {
+  // Canli gokyuzu karesi (8 bit paletli BMP, ~38 KB); web Ana sayfa ~1 sn'de bir ceker
+  server.on("/api/sky.bmp", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    skyStepIfStale(400);
+    AsyncWebServerResponse* res = r->beginChunkedResponse("image/bmp", [](uint8_t* buf, size_t maxLen, size_t index) -> size_t {
+      return skyBmpRead(buf, maxLen, index);
+    });
+    res->addHeader("Cache-Control", "no-store");
+    r->send(res);
+  });
+
   server.on("/api/news", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
     String t;
     if (newsMutex && xSemaphoreTake(newsMutex, pdMS_TO_TICKS(50)) == pdTRUE) { t = NEWS_TICKER_TEXT; xSemaphoreGive(newsMutex); }
