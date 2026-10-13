@@ -42,3 +42,9 @@ Kullanici isteviyle sabahki ilk hava efekti kodunun (commit ab81947, LVGL gorunt
 Bu dalda: platform espressif32@7.0.1 (core 2.0.17, LovyanGFX); ekran saati 12 MHz (15 MHz'de hafif sallanti vardi; 12 MHz'de parazit/titreme kullanici tarafindan gitti diye dogrulandi; 21/24 MHz bozuyor, yukseltme); kayan haber seridi (alt, tam genislik); sehir + surum ust satirda; canli renkler (UI + gokyuzu paleti doygunluk x1.95); ince cerceveler; LVGL bellegi PSRAM'de (src/lv_mem_psram.cpp; yoksa haber/hava TLS "Memory allocation failed"); hubOnWifiUp ayri gorevde (NTP/mDNS/web kurulumu arayuzu dondurmasin).
 Olcum bulgusu (dal wip-olcum-2026-10-13): bounce-buffer'li esp_lcd'de ISR'nin her 495 us'de yaptigi 12800 bayt PSRAM okumasi ana sayfada 574 us suruyordu (butce 495) -> parazit. Gokyuzu yukunu azaltmadan ekran saatini yukseltme.
 Yukleme: ana sayfa yavasken OTA %10'da takiliyor -> USB (COM3) ile yukle: `pio run -t upload --upload-port COM3`.
+
+## 2026-10-13 aksam - firmware dagitimi
+- `araclar/firmware/esp01-role`: role dugumu firmware'i, 8 kart (ESP-01/07, NodeMCU, D1 mini, Sonoff Basic, ESP32 DevKit, C3 SuperMini, S3); hazir imajlar `bin/`; `derle_hepsi.py` hepsini derler, `../birlestir.py` ESP32 ailesi icin tek parcali "factory" imaj uretir (PlatformIO'nun gercek esptool bayraklariyla, flas basligi 4MB).
+- Teslim/release imaji: `pio run -e release` (DEV_SCREENSHOT kapali) -> `.pio/build/release/firmware.bin` (guncelleme) ve `birlestir.py . release <cikis>` ile factory imaj.
+- Web yukleyici sitesi ayri depo: `D:\Kodlar\esp-firmware-yukleyici` (ESP Web Tools gomulu, `cihazlar.json` + `tools/uret.py`). YEREL commit hazir; GitHub'a gonderilmedi (herkese acik depo + Pages izni bekliyor).
+- GitHub release v7.2.1 ve depoyu herkese acma izin sistemince reddedildi (2026-10-13); kullanici onayi/izin kurali bekleniyor. Cihazdan "GitHub'dan guncelle" yalniz HERKESE ACIK depo + release `firmware.bin` ile calisir; gercek depoyla henuz denenmedi.
