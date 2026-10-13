@@ -1,51 +1,39 @@
-"""PlatformIO'nun gercek yukleme komutundan (esptool write_flash ...) tek parcali "factory" imaj uretir.
-Ayni bayraklar ve offsetler kullanilir; boylece tarayicidan 0x0'a yazilan imaj, pio upload ile ayni sonucu verir.
-Kullanim:  python birlestir.py <proje_dizini> <ortam> <cikis.bin>
+"""Derlenmis ESP32 ailesi imajindan tek parcali "factory" imaj uretir (0x0'a yazilir).
+Bayraklar/offsetler `pio run -t upload -v` ciktisindan dogrulanmis sabit degerlerdir (cip basina).
+Kullanim:  python birlestir.py <proje_dizini> <ortam> <cikis.bin> <cip>     cip: esp32 | esp32c3 | esp32s3
+Onkosul: `pio run -e <ortam>` calismis olmali (.pio/build/<ortam>/ icinde bootloader/partitions/firmware).
 """
 import os
-import shlex
 import subprocess
 import sys
 
 PIO_HOME = os.path.join(os.path.expanduser('~'), '.platformio')
+# cip: (flas modu, flas frekansi, bootloader ofseti)
+BILINEN = {'esp32': ('dio', '40m', 0x1000), 'esp32c3': ('dio', '80m', 0x0), 'esp32s3': ('dio', '80m', 0x0)}
 
 
-def yukleme_komutu(proje, ortam):
-    # Sahte porta yuklemeyi dene: komut -v ile yazilir, port acilamayinca hata verir (bize yalniz komut lazim)
-    r = subprocess.run(['pio', 'run', '-e', ortam, '-t', 'upload', '--upload-port', 'COM99', '-v'],
-                       cwd=proje, capture_output=True, text=True, errors='replace')
-    for satir in (r.stdout + r.stderr).splitlines():
-        if 'write_flash' in satir and 'esptool' in satir:
-            return shlex.split(satir, posix=False)
-    raise RuntimeError('esptool write_flash komutu bulunamadi: ' + ortam)
-
-
-def birlestir(proje, ortam, cikis):
-    t = [x.strip('"') for x in yukleme_komutu(proje, ortam)]
-    chip = t[t.index('--chip') + 1]
-    i = t.index('write_flash') + 1
-    bayrak, parcalar = [], []
-    while i < len(t):
-        if t[i].startswith('--flash_') or t[i] in ('-z',):
-            if t[i] == '-z':
-                i += 1
-                continue
-            bayrak += [t[i], t[i + 1]]
-            i += 2
-        else:
-            parcalar += [t[i], os.path.normpath(os.path.join(proje, t[i + 1]))]
-            i += 2
-    # flas boyutu basligi 4MB'a sabitlenir: 8/16MB'lik kartta da calisir, 4MB'lik kartta 8MB basligi onyuklemeyi bozabilir
-    for k in range(0, len(bayrak), 2):
-        if bayrak[k] == '--flash_size':
-            bayrak[k + 1] = '4MB'
+def birlestir(proje, ortam, cikis, cip):
+    if cip not in BILINEN:
+        raise RuntimeError('bilinmeyen cip: ' + str(cip))
     py = os.path.join(PIO_HOME, 'penv', 'Scripts', 'python.exe')
+    if not os.path.exists(py):
+        py = sys.executable
     esptool = os.path.join(PIO_HOME, 'packages', 'tool-esptoolpy', 'esptool.py')
-    subprocess.run([py, esptool, '--chip', chip, 'merge_bin', '-o', cikis] + bayrak + parcalar, check=True)
-    print('birlestirildi:', cikis, os.path.getsize(cikis), 'bayt  (bayraklar:', ' '.join(bayrak), ')')
+    build = os.path.join(proje, '.pio', 'build', ortam)
+    boot_app0 = os.path.join(PIO_HOME, 'packages', 'framework-arduinoespressif32', 'tools', 'partitions', 'boot_app0.bin')
+    mod, frek, boot = BILINEN[cip]
+    parcalar = [hex(boot), os.path.join(build, 'bootloader.bin'), '0x8000', os.path.join(build, 'partitions.bin'),
+                '0xe000', boot_app0, '0x10000', os.path.join(build, 'firmware.bin')]
+    for p in parcalar[1::2]:
+        if not os.path.exists(p):
+            raise FileNotFoundError(p + '  (once: pio run -e ' + ortam + ')')
+    # flas boyutu basligi 4MB: 8/16MB'lik kartta da calisir, 4MB'lik kartta 8MB basligi onyuklemeyi bozabilir
+    bayrak = ['--flash_mode', mod, '--flash_freq', frek, '--flash_size', '4MB']
+    subprocess.run([py, esptool, '--chip', cip, 'merge_bin', '-o', cikis] + bayrak + parcalar, check=True, capture_output=True)
+    print('birlestirildi:', cikis, os.path.getsize(cikis), 'bayt', ' '.join(bayrak))
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         sys.exit(__doc__)
-    birlestir(os.path.abspath(sys.argv[1]), sys.argv[2], os.path.abspath(sys.argv[3]))
+    birlestir(os.path.abspath(sys.argv[1]), sys.argv[2], os.path.abspath(sys.argv[3]), sys.argv[4])

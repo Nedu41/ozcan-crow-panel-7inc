@@ -22,7 +22,7 @@ def birlestir(kart, cip, boot_ofs, build):
     # PlatformIO'nun gercek yukleme komutundaki bayrak ve offsetlerle (bkz. ../birlestir.py)
     sys.path.insert(0, os.path.dirname(HERE))
     from birlestir import birlestir as _b
-    _b(HERE, kart, os.path.join(HERE, 'bin', kart + '.factory.bin'))
+    _b(HERE, kart, os.path.join(HERE, 'bin', kart + '.factory.bin'), cip)
 
 
 def main():

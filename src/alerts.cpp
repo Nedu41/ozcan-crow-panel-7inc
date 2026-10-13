@@ -157,7 +157,7 @@ String alertsJson() {
 void alertsDemo(bool on) {
   if (on) {
     alertsRaise("demo:wx", 0, "HAVA UYARISI - YARIN (DEMO)", "rüzgar 62 km/s, yağış 30 mm, gök gürültülü fırtına");
-    alertsRaise("demo:eq", 1, "YAKIN DEPREM M4.2 (DEMO)", "Körfez (Kocaeli) - 12 km - 30.09 14:20");
+    alertsRaise("demo:eq", 1, "YAKIN DEPREM M4.2 (DEMO)", "Örnek İlçe (Örnek İl) - 12 km - 30.09 14:20");
     return;
   }
   Lock l;

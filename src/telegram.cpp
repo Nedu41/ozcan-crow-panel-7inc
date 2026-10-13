@@ -4,7 +4,7 @@
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include "config.h"
-#if __has_include("secrets.h")
+#if __has_include("secrets.h") && !defined(SECRETS_DISABLED)
 #include "secrets.h"  // TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (gitignore'da)
 #endif
 #ifndef TELEGRAM_BOT_TOKEN

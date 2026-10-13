@@ -671,7 +671,7 @@ void setupWebServer() {
   server.on("/alert_test", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
     bool eq = request->hasParam("kind") && request->getParam("kind")->value() == "eq";
     String id = "test:" + String(millis());
-    if (eq) alertsRaise(id, 1, "YAKIN DEPREM M4.2 (TEST)", "Körfez (Kocaeli) - 12 km - 30.09 14:20");
+    if (eq) alertsRaise(id, 1, "YAKIN DEPREM M4.2 (TEST)", "Örnek İlçe (Örnek İl) - 12 km - 30.09 14:20");
     else alertsRaise(id, 0, "HAVA UYARISI - YARIN (TEST)", "rüzgar 62 km/s, yağış 30 mm");
     request->send(200, "text/plain", "OK");
   });
