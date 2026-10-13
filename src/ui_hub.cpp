@@ -206,6 +206,10 @@ static lv_obj_t* lampBox;
 static lv_obj_t* lampInfo;
 static lv_obj_t* lampDot[MAX_DEVICES];
 static lv_obj_t* lampBtn[MAX_DEVICES][2];
+static lv_obj_t* lampWifi[MAX_DEVICES];
+static lv_obj_t* lampSched[MAX_DEVICES][2];
+static int tmrIdx[MAX_DEVICES];
+static void onTimer(lv_event_t* e) { uiTimerOpen(*(int*)lv_event_get_user_data(e)); }
 static String lampSig;
 
 struct Ctl { char ip[20]; char name[40]; int relay; bool on; };
@@ -281,6 +285,8 @@ static void tickLamps() {
     lv_obj_clean(lampBox);
     memset(lampDot, 0, sizeof(lampDot));
     memset(lampBtn, 0, sizeof(lampBtn));
+    memset(lampWifi, 0, sizeof(lampWifi));
+    memset(lampSched, 0, sizeof(lampSched));
     int i = 0;
     for (JsonObject d : arr) {
       if (i >= MAX_DEVICES) break;
@@ -291,10 +297,24 @@ static void tickLamps() {
       lv_obj_t* nm = uiLabel(hr, String((const char*)(d["name"] | "?")).c_str(), &noto20, C_TEXT);
       lv_obj_set_flex_grow(nm, 1);
       lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
+      tmrIdx[i] = i;
+      lv_obj_t* tb = uiBtn(hr, "Zamanlayıcı", false, nullptr, LV_SIZE_CONTENT, 40);
+      lv_obj_set_style_pad_hor(tb, 10, 0);
+      lv_obj_set_style_text_font(uiBtnLabel(tb), &noto16, 0);
+      lv_obj_add_event_cb(tb, onTimer, LV_EVENT_CLICKED, &tmrIdx[i]);
+      lampWifi[i] = uiLabel(card, "", &noto16, C_DIM);
       for (int r = 0; r < MAX_RELAYS; r++) {
         refs[i][r] = {i, r + 1};
-        lampBtn[i][r] = uiBtn(card, "", false, nullptr, LV_PCT(100), 52);
+        lv_obj_t* rr = uiRow(card);
+        char rn[4];
+        snprintf(rn, sizeof(rn), "R%d", r + 1);
+        uiLabel(rr, rn, &noto20, C_DIM);
+        lampBtn[i][r] = uiBtn(rr, "", false, nullptr, LV_SIZE_CONTENT, 52);
+        lv_obj_set_flex_grow(lampBtn[i][r], 1);
         lv_obj_add_event_cb(lampBtn[i][r], onRelay, LV_EVENT_CLICKED, &refs[i][r]);
+        lampSched[i][r] = uiLabel(card, "", &noto16, C_DIM);
+        lv_obj_set_width(lampSched[i][r], LV_PCT(100));
+        lv_label_set_long_mode(lampSched[i][r], LV_LABEL_LONG_DOT);
       }
       i++;
     }
@@ -302,7 +322,7 @@ static void tickLamps() {
   }
   uiSetText(lampInfo, n ? "" : "Henüz cihaz yok. Web arayüzünden (cihazlar sayfası) ekleyin.");
 
-  // durumları güncelle
+  // durumları güncelle (web kartıyla aynı: dBm, röle durumu, zamanlayıcı özeti)
   if (!takeMutex(statusMutex)) return;
   int i = 0;
   for (JsonObject d : arr) {
@@ -312,16 +332,42 @@ static void tickLamps() {
     String s1 = st.isNull() ? "OFFLINE" : String((const char*)(st["r1_state"] | "OFFLINE"));
     bool online = s1 != "OFFLINE" && s1 != "ERR";
     if (lampDot[i]) setDot(lampDot[i], online);
+    if (lampWifi[i]) {
+      char w[40];
+      int rssi = st.isNull() ? 0 : (int)(st["wifi_rssi"] | 0);
+      if (online && rssi) {
+        snprintf(w, sizeof(w), "WiFi %d dBm", rssi);
+        lv_color_t c = rssi >= -50 ? lv_color_hex(0x8FE0A0) : rssi >= -60 ? lv_color_hex(0xC5E0A0) : rssi >= -70 ? C_ORANGE : rssi >= -80 ? lv_color_hex(0xFFE08A) : C_RED;
+        lv_obj_set_style_text_color(lampWifi[i], c, 0);
+      } else {
+        snprintf(w, sizeof(w), "WiFi çevrimdışı");
+        lv_obj_set_style_text_color(lampWifi[i], C_RED, 0);
+      }
+      uiSetText(lampWifi[i], w);
+    }
     for (int r = 0; r < MAX_RELAYS; r++) {
       if (!lampBtn[i][r]) continue;
       String s = st.isNull() ? "OFFLINE" : String((const char*)(st[r == 0 ? "r1_state" : "r2_state"] | "OFFLINE"));
       bool on = s == "ON";
-      char b[48];
-      snprintf(b, sizeof(b), "Röle %d   %s", r + 1, !online ? "çevrimdışı" : (on ? "AÇIK" : "kapalı"));
       lv_obj_t* l = uiBtnLabel(lampBtn[i][r]);
-      uiSetText(l, b);
+      uiSetText(l, !online ? "HATA" : (on ? "AÇIK" : "KAPALI"));
       uiBtnOn(lampBtn[i][r], online && on, C_CYAN);
-      if (!online) lv_obj_set_style_text_color(l, C_DIM, 0);
+      if (!online) lv_obj_set_style_text_color(l, C_RED, 0);
+      // zamanlayıcı özeti
+      char info[96] = "";
+      if (takeMutex(scheduleMutex)) {
+        JsonObject o = SCHEDULE_CONFIG_DOC[name].as<JsonObject>();
+        if (!o.isNull()) {
+          String k = "r" + String(r + 1);
+          String a = o[k + "_start"] | "", b = o[k + "_end"] | "", su = o[k + "_sunrise_act"] | "", sd = o[k + "_sunset_act"] | "";
+          int days = o[k + "_days"] | 0;
+          if (days > 0 && a.length() == 5 && b.length() == 5) snprintf(info, sizeof(info), "%s - %s", a.c_str(), b.c_str());
+          if (su == "ON" || su == "OFF") { strlcat(info, su == "ON" ? "  Gündoğumu: AÇ" : "  Gündoğumu: KAPAT", sizeof(info)); }
+          if (sd == "ON" || sd == "OFF") { strlcat(info, sd == "ON" ? "  Günbatımı: AÇ" : "  Günbatımı: KAPAT", sizeof(info)); }
+        }
+        xSemaphoreGive(scheduleMutex);
+      }
+      uiSetText(lampSched[i][r], info);
     }
     i++;
   }
@@ -536,10 +582,12 @@ void hubUiOnRotate() {
 
 volatile int devTabReq = -1;  // geliştirme: /dev/tab, /dev/rot (screenshot.cpp)
 volatile bool devRotReq = false;
+volatile int devTimerReq = -1;
 
 static void tick(lv_timer_t*) {
   if (devTabReq >= 0) { lv_tabview_set_active(tv, devTabReq, LV_ANIM_OFF); devTabReq = -1; }
   if (devRotReq) { devRotReq = false; uiRotate(); }
+  if (devTimerReq >= 0) { int i = devTimerReq; devTimerReq = -1; uiTimerOpen(i); }
   uint32_t act = lv_tabview_get_tab_active(tv);
   tickHome();  // saat her zaman; ucuz
   if (act == 1) tickLamps();

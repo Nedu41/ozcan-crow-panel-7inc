@@ -125,6 +125,48 @@ String queryParam(const String& url, const String& key) {
   return "";
 }
 
+// Zamanlayici ayarini HUB'in kendi kaydina yazar (cihaza gonderme ayri). Proxy ve ekran kullanir.
+bool scheduleSave(const String& ip, int relay_id, const String& start_h, const String& start_m, const String& end_h,
+                  const String& end_m, int days, const String& sunrise_act, const String& sunset_act) {
+  if (relay_id < 1 || relay_id > MAX_RELAYS) return false;
+  int devIdx = -1;
+  for (int i = 0; i < (int)doc.size(); i++) {
+    if (doc[i]["ip"] == ip) { devIdx = i; break; }
+  }
+  if (devIdx < 0 || devIdx >= MAX_DEVICES) return false;
+  String devName = doc[devIdx]["name"];
+  if (xSemaphoreTake(scheduleMutex, MUTEX_TIMEOUT) != pdTRUE) return false;
+  JsonObject obj = SCHEDULE_CONFIG_DOC[devName].to<JsonObject>();
+  String rKey = "r" + String(relay_id);
+  obj[rKey + "_start"] = start_h + ":" + start_m;
+  obj[rKey + "_end"] = end_h + ":" + end_m;
+  obj[rKey + "_days"] = days;
+  obj[rKey + "_sunrise_act"] = sunrise_act;
+  obj[rKey + "_sunset_act"] = sunset_act;
+  sunriseAction[devIdx][relay_id - 1] = sunrise_act;
+  sunsetAction[devIdx][relay_id - 1] = sunset_act;
+  saveScheduleConfig();
+  xSemaphoreGive(scheduleMutex);
+  setForceRefresh();
+  return true;
+}
+
+// Ekrandan: HUB kaydi + ESP01'e /save (engelleyici HTTP; ayri gorevden cagrilir). days=0 -> pasif.
+bool scheduleApply(const String& ip, int relay, int sh, int sm, int eh, int em, int days, const String& sunrise, const String& sunset) {
+  char hh[3], mm[3], h2[3], m2[3];
+  snprintf(hh, 3, "%02d", sh); snprintf(mm, 3, "%02d", sm); snprintf(h2, 3, "%02d", eh); snprintf(m2, 3, "%02d", em);
+  scheduleSave(ip, relay, hh, mm, h2, m2, days, sunrise, sunset);
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(500);
+  String url = "http://" + ip + "/save?relay_id=" + relay + "&start_h=" + hh + "&start_m=" + mm + "&end_h=" + h2 + "&end_m=" + m2 +
+               "&days=" + days + "&active=" + (days ? 1 : 0) + "&sunrise_act=" + sunrise + "&sunset_act=" + sunset;
+  if (!http.begin(url)) return false;
+  int code = http.GET();
+  http.end();
+  return code > 0;
+}
+
 // ============== handleProxy (Genişletilmiş ve Hata Ayıklamalı) ==============
 void handleProxy(AsyncWebServerRequest *request) {
 
@@ -178,64 +220,7 @@ void handleProxy(AsyncWebServerRequest *request) {
     Serial.printf("end: %s:%s\n", end_h.c_str(), end_m.c_str());
     Serial.printf("days: %d\n", days);
 
-    if (relay_id >= 1 && relay_id <= MAX_RELAYS) {
-      int devIdx = -1;
-      for (int i = 0; i < doc.size(); i++) {
-        if (doc[i]["ip"] == ip) {
-          devIdx = i;
-          Serial.printf("Cihaz bulundu - Index: %d, Name: %s\n", i, doc[i]["name"].as<String>().c_str());
-          break;
-        }
-      }
-
-      if (devIdx != -1 && devIdx < MAX_DEVICES) {
-        String devName = doc[devIdx]["name"];
-
-        if (xSemaphoreTake(scheduleMutex, MUTEX_TIMEOUT) == pdTRUE) {
-          JsonObject obj = SCHEDULE_CONFIG_DOC[devName].to<JsonObject>();
-          String rKey = "r" + String(relay_id);
-          
-          // Zaman ayarlarını kaydet
-          String startTime = start_h + ":" + start_m;
-          String endTime = end_h + ":" + end_m;
-          
-          obj[rKey + "_start"] = startTime;
-          obj[rKey + "_end"] = endTime;
-          obj[rKey + "_days"] = days;
-          
-          // Gün doğumu/batımı ayarlarını kaydet
-          obj[rKey + "_sunrise_act"] = sunrise_act;
-          obj[rKey + "_sunset_act"] = sunset_act;
-
-          // RAM dizilerini güncelle
-          sunriseAction[devIdx][relay_id - 1] = sunrise_act;
-          sunsetAction[devIdx][relay_id - 1]  = sunset_act;
-
-          Serial.println("=== SCHEDULE KAYDEDİLDİ ===");
-          Serial.printf("DevName: %s\n", devName.c_str());
-          Serial.printf("r%d_start: %s\n", relay_id, startTime.c_str());
-          Serial.printf("r%d_end: %s\n", relay_id, endTime.c_str());
-          Serial.printf("r%d_days: %d\n", relay_id, days);
-          Serial.printf("r%d_sunrise_act: %s\n", relay_id, sunrise_act.c_str());
-          Serial.printf("r%d_sunset_act: %s\n", relay_id, sunset_act.c_str());
-
-          // Schedule config'i LittleFS'e kaydet
-          saveScheduleConfig();
-          xSemaphoreGive(scheduleMutex);
-
-          // JSON'u kontrol et
-          Serial.println("=== GÜNCEL SCHEDULE JSON ===");
-          String jsonStr;
-          serializeJson(SCHEDULE_CONFIG_DOC, jsonStr);
-          Serial.println(jsonStr);
-
-          // Durum güncellemesini zorla
-          setForceRefresh();
-        }
-      } else {
-        Serial.println("HATA: Cihaz bulunamadı veya index sınırı aşıldı");
-      }
-    }
+    scheduleSave(ip, relay_id, start_h, start_m, end_h, end_m, days, sunrise_act, sunset_act);
   }
 
   // Orijinal proxy devam eder
@@ -644,6 +629,7 @@ void wsFlushPending() {
   if (wsPending && millis() - wsLastSent >= WS_MIN_INTERVAL_MS) wsBroadcastStatus();
 }
 
+void webExtraRoutes();  // web_extra.cpp
 #ifdef DEV_SCREENSHOT
 void devScreenshotRoute(AsyncWebServer& server);
 #endif
@@ -660,6 +646,10 @@ void setupWebServer() {
   server.addHandler(&ws);
 
   efektRoutes();
+  webExtraRoutes();
+  server.on("/lamps", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  server.on("/efekt", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  server.on("/sistem", AsyncWebRequestMethod::HTTP_GET, handleRoot);
 
   // Uyarilar (hava/deprem): onay + teshis + deneme
   server.on("/alert_ack", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {

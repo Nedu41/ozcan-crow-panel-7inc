@@ -631,12 +631,15 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
 </div>
 
 <div class="nav">
-  <a href="/" id="nav1" onclick="route('/');return false;">Panel</a>
-  <a href="/settings" id="nav2" onclick="route('/settings');return false;">Cihazlar</a>
+  <a href="/" id="nav1" onclick="route('/');return false;">Ana</a>
+  <a href="/lamps" id="nav7" onclick="route('/lamps');return false;">Lambalar</a>
+  <a href="/efekt" id="nav8" onclick="route('/efekt');return false;">Efekt</a>
   <a href="/weather" id="nav3" onclick="route('/weather');return false;">Oto-Hava</a>
+  <a href="/settings" id="nav2" onclick="route('/settings');return false;">Cihazlar</a>
+  <a href="/sistem" id="nav9" onclick="route('/sistem');return false;">Sistem</a>
+  <a href="/wifi" id="nav6" onclick="route('/wifi');return false;">WiFi</a>
   <a href="/log" id="nav4" onclick="route('/log');return false;">Kayıt</a>
   <a href="/notes" id="nav5" onclick="route('/notes');return false;">Notlar</a>
-  <a href="/wifi" id="nav6" onclick="route('/wifi');return false;">WiFi</a>
 </div>
 
 <div id="alertbar"></div>
@@ -1197,16 +1200,6 @@ function renderSettings() {
             </div>
 
             <div id="scanResults"></div>
-            <div class="dev-card" style="margin-bottom:12px">
-                <div class="dev-card-head"><b>🤖 Yapay zeka efekt anahtarı (Gemini)</b></div>
-                <div class="dev-card-row"><span>Anahtar</span>
-                    <input type="password" id="aiKey" class="compact-input" placeholder="API anahtarı yapıştırın">
-                    <button class="btn" onclick="saveAiKey()">Kaydet</button>
-                </div>
-                <div class="dev-card-row"><span id="aiKeyState">…</span>
-                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7fe0dc">Ücretsiz anahtar al: aistudio.google.com/apikey</a>
-                </div>
-            </div>
             <div class="dev-list">`;
 
         DEVICES.forEach((d, i) => {
@@ -1259,7 +1252,6 @@ function renderSettings() {
         </div>`;
 
         document.getElementById("content").innerHTML = html;
-        loadAiKey();
     });
 }
 
@@ -1438,7 +1430,7 @@ function renderDevice() {
             <h4 style="margin-bottom:8px">Aydınlık otomasyonu <small style="color:#888;font-weight:normal">şu an: %${radPct ?? '-'}</small></h4>
             <div class="dev-list">${relays}</div>
             <br>
-            <button class="btn" onclick="route('/')">← Panel</button>
+            <button class="btn" onclick="route('/lamps')">← Panel</button>
         </div>`;
     });
 }
@@ -2059,20 +2051,195 @@ function delNote(i) {
     postNotes("✓ Not silindi");
 }
 
+// ===================== ANA SAYFA (ekrandaki Ana gibi) =====================
+function wmoText(c) {
+    if (c === 0) return "Açık"; if (c <= 2) return "Parçalı bulutlu"; if (c === 3) return "Bulutlu";
+    if (c === 45 || c === 48) return "Sisli"; if (c >= 51 && c <= 57) return "Çisenti";
+    if (c >= 61 && c <= 67) return "Yağmurlu"; if (c >= 71 && c <= 77) return "Karlı";
+    if (c >= 80 && c <= 82) return "Sağanak"; if (c === 85 || c === 86) return "Kar sağanağı";
+    if (c >= 95) return "Fırtına"; return "Hava durumu";
+}
+let NEWS_ITEMS = [], newsIdx = 0;
+function renderHome() {
+    document.getElementById("content").innerHTML = `
+    <div class="settings-container">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+            <div id="hClock" style="font-size:2.6em;color:#7fe0dc;font-weight:bold">--:--</div>
+            <div id="hDate" style="text-align:right;color:#dadae4"></div>
+        </div>
+    </div>
+    <div class="settings-container"><div id="hWx">Hava durumu yükleniyor…</div></div>
+    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em">Dünya haberleri</div><div id="hNews" style="margin-top:6px">Haberler yükleniyor…</div></div>
+    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Lambalar</div><div id="hLamps"></div></div>
+    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Yapay zeka efektleri</div><div id="hFx"></div></div>`;
+    refreshHome();
+}
+function refreshHome() {
+    if (location.pathname !== "/") return;
+    const g = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"];
+    const a = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+    const n = new Date(), p2 = x => String(x).padStart(2, "0");
+    const set = (id, h) => { const e = document.getElementById(id); if (e) e.innerHTML = h; };
+    set("hClock", p2(n.getHours()) + ":" + p2(n.getMinutes()));
+    set("hDate", `${n.getDate()} ${a[n.getMonth()]} ${n.getFullYear()}<br>${g[n.getDay()]}`);
+    fetchStatus().then(() => {
+        const w = CURRENT_WEATHER || {};
+        let h;
+        if (w.description === "OK") {
+            h = `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <div style="font-size:2.6em;color:#ffb27a;font-weight:bold">${Math.round(w.temp)}°</div>
+                <div><div style="font-size:1.4em">${wmoText(w.weathercode)}</div><div style="color:#9a9aae">${escHtml(w.city_name || "")}</div></div></div>
+                <div style="margin-top:8px">Rüzgâr ${Math.round(w.wind_speed)} km/s ${escHtml(w.wind_direction || "")} &nbsp; Nem %${w.humidity} &nbsp; Bulut %${w.clouds}</div>
+                <div style="color:#9a9aae;margin-top:4px">Gün doğumu ${escHtml(w.sunrise_time || "")} &nbsp; Gün batımı ${escHtml(w.sunset_time || "")}</div>`;
+        } else if (w.description === "NO_LOCATION") {
+            h = `Konum ayarlanmamış. <a href="/weather" onclick="route('/weather');return false;" style="color:#7fe0dc">Oto-Hava</a> sayfasından şehir girin.`;
+        } else h = "Hava verisi alınamadı";
+        set("hWx", h);
+        let l = "";
+        DEVICES.forEach((d, i) => {
+            const st = STATUS[d.name] || {};
+            [1, 2].forEach(r => {
+                const s = st["r" + r + "_state"];
+                if (s === undefined) return;
+                const on = s === "ON", off = s === "OFFLINE" || s === "ERR";
+                l += `<button class="btn ${on ? 'on' : 'off'}" style="margin:3px" ${off ? 'disabled' : ''} onclick="toggleHome(${i},${r})">${escHtml(d.name)} R${r}: ${off ? 'çevrimdışı' : (on ? 'AÇIK' : 'kapalı')}</button>`;
+            });
+        });
+        set("hLamps", l || "Henüz cihaz yok.");
+    }).catch(() => {});
+    fetch("/api/news").then(r => r.json()).then(j => { NEWS_ITEMS = j.items || []; showNews(); }).catch(() => {});
+    fetch("/api/efekt/durum").then(r => r.json()).then(j => {
+        let h = j.ok ? "" : `<div style="color:#ff9a9a;margin-bottom:6px">PC köprüsü yok (efekt_koprusu.py açık olmalı)</div>`;
+        (j.liste || []).forEach(ad => h += `<button class="btn off" style="margin:3px" ${j.ok ? '' : 'disabled'} onclick="fxPlay('${escHtml(ad)}')">${escHtml(ad)}</button>`);
+        h += ` <a href="/efekt" onclick="route('/efekt');return false;" style="color:#7fe0dc">Tümü / yeni efekt</a>`;
+        set("hFx", h);
+    }).catch(() => {});
+}
+function showNews() {
+    const e = document.getElementById("hNews");
+    if (e && NEWS_ITEMS.length) e.textContent = NEWS_ITEMS[newsIdx++ % NEWS_ITEMS.length];
+}
+function toggleHome(i, r) {
+    const dev = DEVICES[i], st = STATUS[dev.name] || {};
+    const action = st["r" + r + "_state"] === "ON" ? "off" : "on";
+    sendControl(dev.ip, r, action).then(() => setTimeout(refreshHome, 600)).catch(() => toast("✗ " + dev.name + ": cihaz yanıt vermiyor", true));
+}
+
+// ===================== EFEKT SAYFASI =====================
+function fxPlay(ad) { fetch("/api/efekt/oynat?ad=" + encodeURIComponent(ad)).then(() => toast("▶ " + ad + " ekranda açıldı")); }
+function renderEfekt() {
+    document.getElementById("content").innerHTML = `
+    <div class="settings-container">
+        <h3>🎞️ Yapay zeka efektleri</h3>
+        <div id="fxStat" style="margin-bottom:8px">…</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input type="text" id="fxPrompt" class="compact-input" style="flex:1;min-width:200px" placeholder="Nasıl bir efekt? (ör. yağmurda neon şehir)">
+            <button class="btn" onclick="fxNew()">Üret ve ekranda göster</button>
+        </div>
+        <div style="color:#9a9aae;font-size:.8em;margin-top:4px">Efekt cihazın ekranında oynar (ekrana dokununca kapanır). Üretim ~30 sn sürebilir.</div>
+    </div>
+    <div class="settings-container"><h3>Kayıtlı efektler</h3><div id="fxList"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <input type="text" id="fxSaveName" class="compact-input" placeholder="Son efektin adı">
+            <button class="btn" onclick="fxSave()">Son efekti kaydet</button>
+        </div>
+    </div>
+    <div class="settings-container"><h3>Ayar</h3>
+        <label>Hız <span id="fxHizL">1.0x</span></label><input type="range" id="fxHiz" min="10" max="400" value="100" oninput="fxTune()" style="width:100%">
+        <label>Işık <span id="fxIsikL">%100</span></label><input type="range" id="fxIsik" min="10" max="200" value="100" oninput="fxTune()" style="width:100%">
+        <button class="btn off" onclick="fetch('/api/efekt/durdur')">Durdur</button>
+    </div>
+    <div class="settings-container"><h3>Gemini API anahtarı</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input type="password" id="aiKey" class="compact-input" placeholder="API anahtarı yapıştırın">
+            <button class="btn" onclick="saveAiKey()">Kaydet</button>
+            <span id="aiKeyState">…</span>
+        </div>
+        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7fe0dc">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
+    </div>`;
+    loadAiKey(); refreshEfekt();
+}
+function refreshEfekt() {
+    if (location.pathname !== "/efekt") return;
+    fetch("/api/efekt/durum").then(r => r.json()).then(j => {
+        const d = {bos: "boşta", uretiyor: "efekt üretiliyor…", oynuyor: "oynuyor" + (j.ad ? ": " + j.ad : ""), hata: "son üretim başarısız"}[j.durum] || "";
+        const s = document.getElementById("fxStat");
+        if (s) s.innerHTML = j.ok ? `<span style="color:#8fe0a0">● Köprü bağlı</span> — ${d}` : `<span style="color:#ff9a9a">● PC köprüsü yok</span> (bilgisayarda efekt_koprusu.py açık olmalı)`;
+        const l = document.getElementById("fxList");
+        if (l) l.innerHTML = (j.liste || []).map(ad => `<span style="display:inline-block;margin:3px"><button class="btn off" onclick="fxPlay('${escHtml(ad)}')">${escHtml(ad)}</button><button class="btn" style="background:#442" title="Sil" onclick="fxDel('${escHtml(ad)}')">✕</button></span>`).join("") || "Henüz kayıtlı efekt yok";
+    }).catch(() => {});
+}
+function fxNew() {
+    const p = document.getElementById("fxPrompt").value.trim();
+    if (!p) { toast("Efekt cümlesi boş", true); return; }
+    fetch("/api/efekt/uret?p=" + encodeURIComponent(p)).then(() => toast("⏳ Üretiliyor, ekranda gösterilecek"));
+}
+function fxSave() {
+    const n = document.getElementById("fxSaveName").value.trim();
+    if (!n) { toast("Ad girin", true); return; }
+    fetch("/api/efekt/kaydet?ad=" + encodeURIComponent(n)).then(() => { toast("✓ Kaydedildi"); setTimeout(refreshEfekt, 800); });
+}
+function fxDel(ad) {
+    if (!confirm('"' + ad + '" silinsin mi?')) return;
+    fetch("/api/efekt/sil?ad=" + encodeURIComponent(ad)).then(() => setTimeout(refreshEfekt, 800));
+}
+let fxTuneT = null;
+function fxTune() {
+    const h = document.getElementById("fxHiz").value / 100, i = document.getElementById("fxIsik").value / 100;
+    document.getElementById("fxHizL").textContent = h.toFixed(1) + "x";
+    document.getElementById("fxIsikL").textContent = "%" + Math.round(i * 100);
+    clearTimeout(fxTuneT);
+    fxTuneT = setTimeout(() => fetch("/api/efekt/ayar?hiz=" + h + "&isik=" + i), 250);
+}
+
+// ===================== SİSTEM SAYFASI (ekrandaki Ayar gibi) =====================
+function renderSistem() {
+    document.getElementById("content").innerHTML = `
+    <div class="settings-container"><h3>⚙️ Sistem</h3><div id="sysInfo">…</div></div>
+    <div class="settings-container"><h3>Ekran</h3>
+        <label>Parlaklık <span id="blL"></span></label><input type="range" id="blS" min="10" max="100" style="width:100%" oninput="sysBl()">
+        <button class="btn" onclick="fetch('/api/sistem/rot')">Ekranı döndür</button>
+    </div>
+    <div class="settings-container"><h3>Telegram</h3>
+        <div id="tgState" style="margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input type="password" id="tgTok" class="compact-input" placeholder="Bot token">
+            <input type="text" id="tgChat" class="compact-input" placeholder="Sohbet (chat) no">
+            <button class="btn" onclick="sysTg()">Kaydet</button>
+            <button class="btn off" onclick="handleTestTelegram()">Test mesajı</button>
+        </div>
+    </div>
+    <div class="settings-container"><h3>Hızlı bağlantılar</h3>
+        <button class="btn" onclick="route('/wifi')">WiFi ağları</button>
+        <button class="btn" onclick="route('/weather')">Hava konumu</button>
+        <button class="btn" onclick="route('/efekt')">Yapay zeka anahtarı</button>
+        <button class="btn warning" onclick="restartHub()">Yeniden başlat</button>
+    </div>`;
+    fetch("/api/sistem").then(r => r.json()).then(j => {
+        const up = j.up, s = document.getElementById("sysInfo");
+        if (!s) return;
+        s.innerHTML = `Ağ: ${escHtml(j.ssid)} &nbsp; Sinyal: ${j.rssi} dBm<br>IP: ${j.ip} &nbsp; Adres: crowhub.local<br>Sürüm: ${j.fw}<br>Çalışma: ${Math.floor(up / 3600)} sa ${Math.floor(up / 60) % 60} dk &nbsp; Bellek: ${Math.round(j.heap / 1024)} KB boş`;
+        document.getElementById("blS").value = j.bl; document.getElementById("blL").textContent = "%" + j.bl;
+        document.getElementById("tgState").innerHTML = j.tg ? `<span style="color:#8fe0a0">● Açık</span> (sohbet: ${escHtml(j.tg_chat)}). Değiştirmek için token'ı yeniden girin.` : `<span style="color:#ff9a9a">● Kapalı</span> — token ve sohbet no girin.`;
+        document.getElementById("tgChat").value = j.tg_chat || "";
+    });
+}
+let blT = null;
+function sysBl() {
+    const v = document.getElementById("blS").value;
+    document.getElementById("blL").textContent = "%" + v;
+    clearTimeout(blT); blT = setTimeout(() => fetch("/api/sistem/set?bl=" + v), 300);
+}
+function sysTg() {
+    const t = document.getElementById("tgTok").value.trim(), c = document.getElementById("tgChat").value.trim();
+    if (!t) { toast("Bot token boş", true); return; }
+    fetch("/api/telegram?token=" + encodeURIComponent(t) + "&chat=" + encodeURIComponent(c)).then(() => { toast("✓ Telegram kaydedildi"); document.getElementById("tgTok").value = ""; renderSistem(); });
+}
+
 // --- NAVİGASYON ---
 function navigate() {
     const p = location.pathname;
-    
-    // Aktif menüyü güncelle
-    document.querySelectorAll('.nav a').forEach(a => a.className = '');
-    if(p === "/") document.getElementById("nav1").className = "active";
-    else if(p === "/settings") document.getElementById("nav2").className = "active";
-    else if(p === "/weather") document.getElementById("nav3").className = "active";
-    else if(p === "/log") document.getElementById("nav4").className = "active";
-    else if(p === "/notes") document.getElementById("nav5").className = "active";
-    else if(p === "/wifi") document.getElementById("nav6").className = "active";
-
-    // İlgili sayfayı render et
+    document.querySelectorAll('.nav a').forEach(a => a.className = (a.getAttribute('href') === p || (p === '/device' && a.getAttribute('href') === '/settings')) ? 'active' : '');
     if(p === "/settings") {
         fetchDevices().then(renderSettings);
     } else if(p === "/log") {
@@ -2083,14 +2250,19 @@ function navigate() {
         renderNotes();
     } else if(p === "/wifi") {
         renderWifi();
+    } else if(p === "/efekt") {
+        renderEfekt();
+    } else if(p === "/sistem") {
+        renderSistem();
     } else if(p === "/device") {
-        document.getElementById("nav2").className = "active";
         fetchDevices().then(renderDevice);
-    } else {
+    } else if(p === "/lamps") {
         fetchDevices().then(() => {
             renderControl();
             update();
         });
+    } else {
+        fetchDevices().then(renderHome);
     }
 }
 
@@ -2103,6 +2275,9 @@ window.onload = function() {
     // koparsa (ev ağı kararsız olabilir) diye yedek/geç bir fallback.
     setInterval(update, 15000);
     setInterval(() => { if (location.pathname === '/log') renderEvents(); }, 10000);
+    setInterval(refreshHome, 20000);
+    setInterval(showNews, 8000);
+    setInterval(refreshEfekt, 3000);
 };
 </script>
 </body>

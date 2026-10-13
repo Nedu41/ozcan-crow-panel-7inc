@@ -8,6 +8,7 @@
 extern LGFX lcd;
 extern volatile int devTabReq;     // ui_hub.cpp
 extern volatile bool devRotReq;
+extern volatile int devTimerReq;
 
 static uint8_t rowBuf[800 * 3 + 4];
 static int curRow = -1;
@@ -18,6 +19,10 @@ void devScreenshotRoute(AsyncWebServer& server) {
   // /dev/tab?i=0..3  /dev/rot : ekran goruntusu testleri icin (LVGL tick'inde uygulanir)
   server.on("/dev/tab", HTTP_GET, [](AsyncWebServerRequest* r) {
     devTabReq = r->hasParam("i") ? r->getParam("i")->value().toInt() : 0;
+    r->send(200, "text/plain", "ok");
+  });
+  server.on("/dev/timer", HTTP_GET, [](AsyncWebServerRequest* r) {
+    devTimerReq = r->hasParam("i") ? r->getParam("i")->value().toInt() : 0;
     r->send(200, "text/plain", "ok");
   });
   server.on("/dev/rot", HTTP_GET, [](AsyncWebServerRequest* r) {

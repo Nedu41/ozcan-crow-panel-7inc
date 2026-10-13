@@ -23,9 +23,7 @@ static const int KW = 160, KH = 96;  // kare: yatay 160x96, dikey 96x160 (5x bü
 static const uint16_t UDP_PORT = 4048;
 
 // ------------------------------------------------------------------ köprü adresi
-#ifdef DEV_SCREENSHOT
-static volatile bool devOpenReq = false;  // /dev/fx: gösterimi dokunmadan aç (test)
-#endif
+static volatile bool devOpenReq = false, devCloseReq = false;  // web/geliştirme: ekranı LVGL zamanlayıcısında aç/kapat
 static String bridgeBase, bridgeKey;  // http://ip:8766 , anahtar
 static SemaphoreHandle_t mtx;
 
@@ -55,6 +53,47 @@ void efektRoutes() {
 #ifdef DEV_SCREENSHOT
   server.on("/dev/fx", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) { devOpenReq = true; r->send(200, "text/plain", "ok"); });
 #endif
+  // Web arayüzü: köprüyü cihaz üzerinden kumanda eder (efekt ekranda açılır)
+  server.on("/api/efekt/durum", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    JsonDocument d;
+    d["ok"] = (bool)efektSt.ok;
+    d["durum"] = efektSt.durum;
+    d["ad"] = efektSt.ad;
+    JsonArray l = d["liste"].to<JsonArray>();
+    char nm[24][32];
+    int n = efektListe(nm, 24);
+    for (int i = 0; i < n; i++) l.add(nm[i]);
+    String o;
+    serializeJson(d, o);
+    r->send(200, "application/json", o);
+  });
+  server.on("/api/efekt/uret", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    if (r->hasParam("p")) { efektUret(r->getParam("p")->value()); devOpenReq = true; }
+    r->send(200, "text/plain", "OK");
+  });
+  server.on("/api/efekt/oynat", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    if (r->hasParam("ad")) { efektOynat(r->getParam("ad")->value()); devOpenReq = true; }
+    r->send(200, "text/plain", "OK");
+  });
+  server.on("/api/efekt/kaydet", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    if (r->hasParam("ad")) efektKaydet(r->getParam("ad")->value());
+    r->send(200, "text/plain", "OK");
+  });
+  server.on("/api/efekt/sil", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    if (r->hasParam("ad")) efektSil(r->getParam("ad")->value());
+    r->send(200, "text/plain", "OK");
+  });
+  server.on("/api/efekt/ayar", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    float h = r->hasParam("hiz") ? r->getParam("hiz")->value().toFloat() : 1.0f;
+    float i = r->hasParam("isik") ? r->getParam("isik")->value().toFloat() : 1.0f;
+    efektAyar(h, i);
+    r->send(200, "text/plain", "OK");
+  });
+  server.on("/api/efekt/durdur", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
+    efektDurdur();
+    devCloseReq = true;
+    r->send(200, "text/plain", "OK");
+  });
   server.on("/api/aikey", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
     if (r->hasParam("set")) efektAnahtar(r->getParam("set")->value());
     r->send(200, "application/json", efektAnahtarVar() ? "{\"var\":true}" : "{\"var\":false}");
@@ -247,18 +286,19 @@ static void drawFrame() {
   bool direct = dbl && land;
   uint8_t* hid = direct ? (fbCur == fbA ? fbB : fbA) : nullptr;
   bool flip = direct && lcd.getRotation() == 2;
+  // ham framebuffer bayt sırası ters (rgb565_2Byte); pushImage bunu kendisi çevirir, doğrudan yazarken biz çeviririz
   for (int y = 0; y < h; y++) {
     const uint16_t* src = fbuf + y * w;
     uint16_t* row = blk;
     if (!flip) {
       for (int x = 0; x < w; x++) {
-        uint16_t c = src[x];
+        uint16_t c = direct ? __builtin_bswap16(src[x]) : src[x];
         row[0] = row[1] = row[2] = row[3] = row[4] = c;
         row += 5;
       }
     } else {
       for (int x = w - 1; x >= 0; x--) {
-        uint16_t c = src[x];
+        uint16_t c = __builtin_bswap16(src[x]);
         row[0] = row[1] = row[2] = row[3] = row[4] = c;
         row += 5;
       }
@@ -280,9 +320,8 @@ static void drawFrame() {
 static void onOvClick(lv_event_t*) { efektEkranKapat(); }
 
 static void ovTick(lv_timer_t*) {
-#ifdef DEV_SCREENSHOT
   if (devOpenReq) { devOpenReq = false; efektEkranAc(); }
-#endif
+  if (devCloseReq) { devCloseReq = false; if (shown) { efektEkranKapat(); } }
   if (!shown) return;
   if (frameCnt != shownCnt) {
     if (shownCnt == 0) {  // ilk kare: mesajı kaldır, LVGL'nin son yeniden çizimini bekle

@@ -26,7 +26,13 @@ Lamba düğümleri: Özcan abinin evinde olup olmadığı bilinmiyor, ama mutlak
 Çalışan (kartta doğrulandı): ekran + dokunmatik + yatay/dikey, dokunmatik WiFi kurulumu (kayıtlı ağ listesi `/wifi_nets.json`, açılışta sırayla denenir), ev-lamba HUB arka ucu (web arayüzü `http://<ip>/`, cihaz yönetimi, hava, haber, deprem, zamanlayıcı, Telegram, MQTT, OTA), LVGL sayfaları Ana/Lambalar/Efekt/Ayar, **OTA** (`pio run -t upload --upload-port <ip>`). mDNS adı `crowhub.local` (ev-lamba'nın `merkezihub.local`'ı ile çakışmasın diye). Seri port USB girişine göre değişir (COM3/COM14…).
 Doğrulanmamış: lamba düğmeleriyle röle kontrolü (cihaz eklenmedi), arka ışık PWM kısma, 24 MHz ekran saati.
 Geliştirme araçları: `-DDEV_SCREENSHOT` (platformio.ini) → `GET /screen.bmp`, `/dev/tab?i=`, `/dev/rot`. **Teslimde kapatılır** (bkz. `docs/TESLIM.md`).
-Flash: uygulama ~1,82 MB / 1,97 MB OTA yuvası (%92) — yeni özellik eklerken boyutu izle.
+Flash: uygulama ~1,85 MB / 1,97 MB OTA yuvası (%94, 2026-10-13) — yeni özellik eklerken boyutu izle.
 Mimari: `src/ui.cpp` (sürücü+WiFi akışı+metin/onay pencereleri), `src/ui_hub.cpp` (sayfalar), `src/ledpanel.cpp` (istemci görevi), `src/data_task.cpp` (haber/hava/deprem), kalanı ev-lamba'dan taşındı (aynı API, aynı web sayfası `include/relay_webpage_multi.h`).
 Telegram bot/chat ve hava konumu Ayar sayfasından girilir (NVS / hava ayarı dosyası).
 Sıradaki: kullanıcı cevapları (aşağıdaki sorular), LedPanel gerçek test, lamba ekleme testi, Telegram/hava konumunu ekrandan girme, yapay zeka efekti sayfası, web arayüzüne LedPanel bölümü. Ardından Nextion projesi (`D:\Kodlar\ozcan-NX4832k035_011`).
+
+## Güncelleme (2026-10-13)
+- Efekt gösterimi **çift tampon**: gizli PSRAM tamponuna çizilip vsync'te LovyanGFX DMA işaretçileri çevrilir (`src/efekt.cpp`, `-fno-access-control` build_src_flags). Ham framebuffer bayt sırası ters (bswap16). Yalnızca yatayda; dikeyde eski yol (akabilir). 24 MHz ekran saati denendi, titretti, geri alındı.
+- Lambalar sekmesi web kartıyla aynı (dBm, R1/R2, zamanlayıcı özeti) + `src/ui_timer.cpp` zamanlayıcı penceresi (saat, gün, gündoğumu/batımı).
+- Web: sayfalar Ana (saat/hava/haber/lamba/efekt), Lambalar, Efekt, Oto-Hava, Cihazlar, Sistem (parlaklık, yön, Telegram, bilgi), WiFi, Kayıt, Notlar. Yeni uçlar: `/api/news`, `/api/sistem*`, `/api/telegram`, `/api/efekt/*`, `/api/aikey` (`src/web_extra.cpp`, `src/efekt.cpp`).
+- PC kurulumu: `araclar/KURULUM.bat`.
