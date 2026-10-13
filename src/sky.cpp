@@ -900,24 +900,50 @@ static const int TW = 16, TH = 16, NTX = (SKY_W + TW - 1) / TW, NTY = (SKY_H + T
 int skyApplyDirty(SkyRect* out, int maxOut) {
   uint32_t tp = micros();
   if (!big || xSemaphoreTake(pmtx, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
-  static uint32_t palSeq = 1, tilePal[NTY][NTX];
+  // Durum: pending[ty][tx] = bu karo ekrandakinden farkli olabilir. Baslangicta hepsi bekliyor; yeni yayinlanan kare
+  // oncekiyle karsilastirilip degisen karolar (+ bilinear bagimliligi icin sol/ust komsulari) isaretlenir; isaretli karolar
+  // ISLENENE KADAR bekler (hicbiri kaybolmaz). Her cagrida en cok BUDGET_TILES karo islenir.
+  static bool pending[NTY][NTX];
+  static bool started = false;
+  static uint32_t seenSeq = 0;
+  static uint16_t seenPal[16];
   static int cursor = 0;
-  if (memcmp(lastPal, pubPal, sizeof(pubPal)) != 0) { palSeq++; memcpy(lastPal, pubPal, sizeof(lastPal)); }
-  // Kare basina BUTCE: en cok BUDGET_TILES karo islenir (her biri 32x32 ekran pikseli); gerisi sonraki yenilemelere kalir.
-  // Boylece yagmurda tum resim degisse bile her yenileme ~40 ms'de biter ve alt yazi akici kalir.
-  const int BUDGET_TILES = 40;
+  if (!started) {
+    started = true;
+    memset(pending, 1, sizeof(pending));
+    memcpy(lastIdx, pubIdx, SKY_W * SKY_H);
+    memcpy(seenPal, pubPal, sizeof(seenPal));
+    seenSeq = frameSeq;
+  } else if (frameSeq != seenSeq) {
+    seenSeq = frameSeq;
+    if (memcmp(seenPal, pubPal, sizeof(seenPal)) != 0) {  // palet degisti: tum karolar yeniden
+      memset(pending, 1, sizeof(pending));
+      memcpy(seenPal, pubPal, sizeof(seenPal));
+    }
+    for (int ty = 0; ty < NTY; ty++)
+      for (int tx = 0; tx < NTX; tx++) {
+        int xs = tx * TW, ys = ty * TH, xe = min(xs + TW, SKY_W), ye = min(ys + TH, SKY_H);
+        bool ch = false;
+        for (int y = ys; y < ye && !ch; y++)
+          if (memcmp(pubIdx + y * SKY_W + xs, lastIdx + y * SKY_W + xs, xe - xs)) ch = true;
+        if (ch) {
+          pending[ty][tx] = true;
+          if (tx > 0) pending[ty][tx - 1] = true;               // bilinear: sol/ust komsunun kenar pikseli bu karoya bagli
+          if (ty > 0) pending[ty - 1][tx] = true;
+          if (tx > 0 && ty > 0) pending[ty - 1][tx - 1] = true;
+        }
+      }
+    memcpy(lastIdx, pubIdx, SKY_W * SKY_H);  // "son karsilastirilan kare" (islenmis anlamina GELMEZ; islenme pending ile izlenir)
+  }
+  const int BUDGET_TILES = 24;
   static bool done[NTY][NTX];
   memset(done, 0, sizeof(done));
   int processed = 0, total = NTX * NTY;
   auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
   for (int k = 0; k < total && processed < BUDGET_TILES; k++) {
     int ti = (cursor + k) % total, ty = ti / NTX, tx = ti % NTX;
+    if (!pending[ty][tx]) continue;
     int xs = tx * TW, ys = ty * TH, xe = min(xs + TW, SKY_W), ye = min(ys + TH, SKY_H);
-    int x1 = min(xs + TW + 1, SKY_W), y1 = min(ys + TH + 1, SKY_H);
-    bool d = tilePal[ty][tx] != palSeq;
-    for (int y = ys; y < y1 && !d; y++)
-      if (memcmp(pubIdx + y * SKY_W + xs, lastIdx + y * SKY_W + xs, x1 - xs)) d = true;
-    if (!d) continue;
     for (int y = ys; y < ye; y++) {
       const uint8_t* i0 = pubIdx + y * SKY_W;
       const uint8_t* i1 = y + 1 < SKY_H ? i0 + SKY_W : i0;
@@ -932,9 +958,8 @@ int skyApplyDirty(SkyRect* out, int maxOut) {
         d1[2 * x] = avg(a, c);
         d1[2 * x + 1] = avg(ab, cd);
       }
-      memcpy(lastIdx + y * SKY_W + xs, pubIdx + y * SKY_W + xs, x1 - xs);  // bu karonun (+1 komsu) son islenen hali
     }
-    tilePal[ty][tx] = palSeq;
+    pending[ty][tx] = false;
     done[ty][tx] = true;
     processed++;
     cursor = (ti + 1) % total;

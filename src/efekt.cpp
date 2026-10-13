@@ -13,7 +13,7 @@
 #include "ui_common.h"
 
 extern AsyncWebServer server;
-static volatile uint32_t frameCnt = 0, drawUs = 0;
+static volatile uint32_t frameCnt = 0, drawUs = 0, dropCnt = 0, pktCnt = 0;
 EfektState efektSt;
 
 static const int KW = 160, KH = 96;  // kare: yatay 160x96, dikey 96x160 (5x büyütülür -> 800x480)
@@ -97,7 +97,7 @@ void efektRoutes() {
   });
   server.on("/api/efekt", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
     bool land = uiIsLandscape();
-    r->send(200, "application/json", String("{\"w\":") + (land ? KW : KH) + ",\"h\":" + (land ? KH : KW) + ",\"kare\":" + frameCnt + ",\"cizim_us\":" + drawUs + "}");
+    r->send(200, "application/json", String("{\"w\":") + (land ? KW : KH) + ",\"h\":" + (land ? KH : KW) + ",\"kare\":" + frameCnt + ",\"cizim_us\":" + drawUs + ",\"dusen\":" + dropCnt + ",\"paket\":" + pktCnt + "}");
   });
 }
 
@@ -218,15 +218,24 @@ static void udpTask(void*) {
   WiFiUDP udp;
   udp.begin(UDP_PORT);
   static uint8_t pk[1500];
+  uint32_t got = 0;  // bu karede alinan bayt
+  const uint32_t expect = KW * KH * 2;
   for (;;) {
     int n = udp.parsePacket();
-    if (n <= 10) { vTaskDelay(pdMS_TO_TICKS(1)); continue; }
+    if (n <= 10) { vTaskDelay(1); continue; }  // paket yoksa 1 tik; varsa bekleme YOK (kuyruk dolmasin)
     n = udp.read(pk, sizeof(pk));
+    pktCnt++;
     uint32_t off = (uint32_t)pk[4] << 24 | (uint32_t)pk[5] << 16 | (uint32_t)pk[6] << 8 | pk[7];
     uint32_t len = (uint32_t)pk[8] << 8 | pk[9];
     if (len > (uint32_t)n - 10) len = n - 10;
-    if (off + len <= (uint32_t)KW * KW * 2) memcpy((uint8_t*)fback + off, pk + 10, len);
-    if (pk[0] & 1) frameCnt++;  // push bayrağı: kare tamam (gösterilene kopyalamayı LVGL zamanlayıcısı yapar)
+    if (off + len <= (uint32_t)KW * KW * 2) { memcpy((uint8_t*)fback + off, pk + 10, len); got += len; }
+    if (pk[0] & 1) {  // push bayragi: kare sonu
+      if (got >= expect) {            // TAM kare: gosterilecek tampona al (yarim kare asla gosterilmez)
+        memcpy(fbuf, fback, KW * KW * 2);
+        frameCnt++;
+      } else dropCnt++;               // eksik kare: at (onceki kare ekranda kalir)
+      got = 0;
+    }
   }
 }
 
@@ -243,7 +252,6 @@ static uint16_t* blk;  // 5 satırlık blok (internal RAM)
 static void drawFrame() {
   if (!uiIsLandscape()) return;  // efekt yalnizca yatay yonde (dikeyde mesaj gosterilir)
   const int w = KW, h = KH;
-  memcpy(fbuf, fback, KW * KW * 2);  // UDP yazarken cizmeyelim
   uint16_t* hid = displayHidden();
   bool flip = uiRotation() == 2;
   for (int y = 0; y < h; y++) {

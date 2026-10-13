@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SAVE = os.path.join(HERE, 'efektler')
 KF = os.path.join(HERE, '.kopru_anahtar')
 AIKF = os.path.join(HERE, '.ai_key')
-PORT, UDP_PORT, FPS = 8767, 4048, 20
+PORT, UDP_PORT, FPS = 8767, 4048, 15
 MODELS = ('gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest')
 if os.path.exists(KF):
     KEY = open(KF).read().strip()
@@ -141,7 +141,7 @@ class Player:
             push = 1 if off + 1440 >= n else 0
             self.sock.sendto(struct.pack('>BBBBIH', 0x41 if push else 0x40, 0, 1, 1, off, len(ch)) + ch, (self.ip, UDP_PORT))
             off += 1440
-            t = time.perf_counter() + 0.001
+            t = time.perf_counter() + 0.002
             while time.perf_counter() < t: pass                          # Windows sleep(0.001) ~15 ms; bekleme dongusu
 
     def device_size(self):

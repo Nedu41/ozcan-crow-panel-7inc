@@ -849,8 +849,10 @@ static void skyTick(lv_timer_t*) {
   int n = skyApplyDirty(rc, 28);
   if (n == 0) return;
   if (lv_image_get_scale(skyImg) != 256) { lv_obj_invalidate(skyImg); return; }
+  lv_area_t oc;
+  lv_obj_get_coords(skyImg, &oc);  // lv_obj_invalidate_area MUTLAK ekran koordinati ister (nesneye gore degil)
   for (int i = 0; i < n; i++) {
-    lv_area_t a = {rc[i].x1, rc[i].y1, rc[i].x2, rc[i].y2};
+    lv_area_t a = {oc.x1 + rc[i].x1, oc.y1 + rc[i].y1, oc.x1 + rc[i].x2, oc.y1 + rc[i].y2};
     lv_obj_invalidate_area(skyImg, &a);
   }
 }
