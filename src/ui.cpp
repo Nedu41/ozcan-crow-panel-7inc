@@ -7,21 +7,19 @@
 #include <lvgl.h>
 
 #include "board.h"
-#include "dbuf.h"
+#include "display.h"
 #include "hub.h"
 #include "ui_common.h"
 #include "ui_hub.h"
 #include "wifi_nets.h"
 
-LGFX lcd;
 static uint8_t rot = 0;
 static int backlightPct = 100;
 static lv_display_t* disp;
 
 // ------------------------------------------------------------------ ekran / dokunmatik bağlantısı
 static void flushCb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
-  if (dbufActive()) dbufFlush(a, (const uint16_t*)px, lv_display_flush_is_last(d));
-  else lcd.pushImage(a->x1, a->y1, a->x2 - a->x1 + 1, a->y2 - a->y1 + 1, (lgfx::rgb565_t*)px);
+  displayFlush(a, (const uint16_t*)px, lv_display_flush_is_last(d));
   lv_display_flush_ready(d);
 }
 
@@ -41,7 +39,7 @@ static void touchCb(lv_indev_t*, lv_indev_data_t* d) {
 // Arka ışık: GPIO2 (MT9201 EN), PWM. Donanımda PWM ile kısma henüz doğrulanmadı (%100 = sürekli HIGH).
 static void applyBacklight() {
   int duty = constrain(backlightPct, 10, 100) * 255 / 100;
-  ledcWrite(0, duty);
+  ledcWrite(PIN_BL, duty);
 }
 
 void uiSetBacklight(int pct) {
@@ -53,13 +51,13 @@ void uiSetBacklight(int pct) {
   p.end();
 }
 int uiGetBacklight() { return backlightPct; }
-bool uiIsLandscape() { return lcd.width() > lcd.height(); }
+uint8_t uiRotation() { return rot; }
+bool uiIsLandscape() { return displayW() > displayH(); }
 
 void uiRotate() {
-  dbufRestoreOriginal();  // dikeyde LovyanGFX asil tampona yazar
   rot = (rot + 1) & 3;
-  lcd.setRotation(rot);
-  lv_display_set_resolution(disp, lcd.width(), lcd.height());
+  displaySetRotation(rot);
+  lv_display_set_resolution(disp, displayW(), displayH());
   Preferences p;
   p.begin("ui", false);
   p.putUChar("rot", rot);
@@ -76,12 +74,8 @@ void guiInit() {
   p.end();
 
   boardPowerSeq();
-  lcd.init();
-  lcd.setRotation(rot);
-  lcd.fillScreen(TFT_BLACK);
-  dbufInit();
-  ledcSetup(0, 5000, 8);
-  ledcAttachPin(PIN_BL, 0);
+  displayInit(rot);
+  ledcAttach(PIN_BL, 5000, 8);
   applyBacklight();
 
   lv_init();
@@ -89,7 +83,7 @@ void guiInit() {
   const uint32_t bufPx = 800 * 40;
   void* b1 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
   void* b2 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
-  disp = lv_display_create(lcd.width(), lcd.height());
+  disp = lv_display_create(displayW(), displayH());
   lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
   lv_display_set_flush_cb(disp, flushCb);
   lv_display_set_buffers(disp, b1, b2, bufPx * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);

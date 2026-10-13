@@ -8,14 +8,11 @@
 #include <WiFiUdp.h>
 
 #include <driver/gpio.h>
-#include <esp32s3/rom/cache.h>
 #include <soc/io_mux_reg.h>
 
-#include "board.h"
 #include "ui_common.h"
 
 extern AsyncWebServer server;
-extern LGFX lcd;
 static volatile uint32_t frameCnt = 0, drawUs = 0;
 EfektState efektSt;
 
@@ -241,41 +238,35 @@ static bool shown = false;
 static uint32_t shownCnt = 0, openedAt = 0, drawAfter = 0;
 static uint16_t* blk;  // 5 satırlık blok (internal RAM)
 
-#include "dbuf.h"
+#include "display.h"
 
 static void drawFrame() {
-  bool land = uiIsLandscape();
-  int w = land ? KW : KH, h = land ? KH : KW, W = w * 5;
-  memcpy(fbuf, fback, KW * KW * 2);  // UDP yazarken çizmeyelim
-  bool direct = dbufActive() && land;
-  uint8_t* hid = direct ? dbufHidden() : nullptr;
-  bool flip = direct && lcd.getRotation() == 2;
-  // ham framebuffer bayt sırası ters (rgb565_2Byte); pushImage bunu kendisi çevirir, doğrudan yazarken biz çeviririz
+  if (!uiIsLandscape()) return;  // efekt yalnizca yatay yonde (dikeyde mesaj gosterilir)
+  const int w = KW, h = KH;
+  memcpy(fbuf, fback, KW * KW * 2);  // UDP yazarken cizmeyelim
+  uint16_t* hid = displayHidden();
+  bool flip = uiRotation() == 2;
   for (int y = 0; y < h; y++) {
     const uint16_t* src = fbuf + y * w;
     uint16_t* row = blk;
     if (!flip) {
       for (int x = 0; x < w; x++) {
-        uint16_t c = direct ? __builtin_bswap16(src[x]) : src[x];
+        uint16_t c = src[x];
         row[0] = row[1] = row[2] = row[3] = row[4] = c;
         row += 5;
       }
     } else {
       for (int x = w - 1; x >= 0; x--) {
-        uint16_t c = __builtin_bswap16(src[x]);
+        uint16_t c = src[x];
         row[0] = row[1] = row[2] = row[3] = row[4] = c;
         row += 5;
       }
     }
-    for (int k = 1; k < 5; k++) memcpy(blk + k * W, blk, W * 2);
-    if (direct) {
-      int py = flip ? 480 - (y + 1) * 5 : y * 5;
-      memcpy(hid + (size_t)py * 1600, blk, W * 2 * 5);  // 5 satır art arda (satır adımı 1600 bayt)
-    } else {
-      lcd.pushImage(0, y * 5, W, 5, (lgfx::rgb565_t*)blk);
-    }
+    for (int k = 1; k < 5; k++) memcpy(blk + k * 800, blk, 800 * 2);
+    int py = flip ? 480 - (y + 1) * 5 : y * 5;
+    memcpy(hid + (size_t)py * 800, blk, 800 * 2 * 5);  // 5 satir art arda
   }
-  if (direct) dbufFlip(hid);
+  displayFlip(hid);
 }
 
 static void onOvClick(lv_event_t*) { efektEkranKapat(); }
@@ -284,6 +275,11 @@ static void ovTick(lv_timer_t*) {
   if (devOpenReq) { devOpenReq = false; efektEkranAc(); }
   if (devCloseReq) { devCloseReq = false; if (shown) { efektEkranKapat(); } }
   if (!shown) return;
+  if (!uiIsLandscape()) {  // dikeyde efekt gosterilmez
+    lv_label_set_text(msg, "Efekt için ekranı yatay çevirin\n(dokun: çık)");
+    lv_obj_remove_flag(msg, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
   if (frameCnt != shownCnt) {
     if (shownCnt == 0) {  // ilk kare: mesajı kaldır, LVGL'nin son yeniden çizimini bekle
       lv_obj_add_flag(msg, LV_OBJ_FLAG_HIDDEN);

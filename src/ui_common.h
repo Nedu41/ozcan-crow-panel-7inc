@@ -115,6 +115,7 @@ inline lv_obj_t* uiSlider(lv_obj_t* par, int lo, int hi, int val, lv_color_t col
 void uiShowWifiSetup();                 // WiFi kurulum ekranı (tarama + şifre)
 void uiRotate();                        // ekranı bir sonraki yöne döndür (kalıcı)
 bool uiIsLandscape();
+uint8_t uiRotation();                   // 0..3
 void uiSetBacklight(int pct);           // 10..100
 int uiGetBacklight();
 // Metin girişi penceresi (ekran klavyesi). OK'ta cb(metin) çağrılır.

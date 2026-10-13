@@ -3,10 +3,8 @@
 #ifdef DEV_SCREENSHOT
 #include <ESPAsyncWebServer.h>
 
-#include "board.h"
-#include "dbuf.h"
+#include "display.h"
 
-extern LGFX lcd;
 extern volatile int devTabReq;     // ui_hub.cpp
 extern volatile bool devRotReq;
 extern volatile int devTimerReq;
@@ -31,7 +29,7 @@ void devScreenshotRoute(AsyncWebServer& server) {
     r->send(200, "text/plain", "ok");
   });
   server.on("/screen.bmp", HTTP_GET, [](AsyncWebServerRequest* req) {
-    const int W = lcd.width(), H = lcd.height();
+    const int W = displayW(), H = displayH();
     const size_t rowBytes = (W * 3 + 3) & ~3u;
     const size_t total = 54 + rowBytes * H;
     curRow = -1;
@@ -54,16 +52,11 @@ void devScreenshotRoute(AsyncWebServer& server) {
         int y = H - 1 - (int)(off / rowBytes);
         size_t inRow = off % rowBytes;
         if (curRow != y) {
-          static lgfx::rgb888_t px[800];
           static uint16_t r565[800];
-          if (dbufReadRow(y, r565)) {  // cift tampon: gorunen tampondan oku
-            for (int x = 0; x < W; x++) {
-              uint16_t c = r565[x];
-              rowBuf[x * 3] = (c & 31) << 3; rowBuf[x * 3 + 1] = ((c >> 5) & 63) << 2; rowBuf[x * 3 + 2] = ((c >> 11) & 31) << 3;
-            }
-          } else {
-            lcd.readRect(0, y, W, 1, px);
-            for (int x = 0; x < W; x++) { rowBuf[x * 3] = px[x].b; rowBuf[x * 3 + 1] = px[x].g; rowBuf[x * 3 + 2] = px[x].r; }
+          displayReadRow(y, r565);
+          for (int x = 0; x < W; x++) {
+            uint16_t c = r565[x];
+            rowBuf[x * 3] = (c & 31) << 3; rowBuf[x * 3 + 1] = ((c >> 5) & 63) << 2; rowBuf[x * 3 + 2] = ((c >> 11) & 31) << 3;
           }
           curRow = y;
         }
