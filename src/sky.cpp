@@ -11,8 +11,11 @@
 
 static uint8_t* idx = nullptr;          // SKY_W*SKY_H palet indeksi (PSRAM)
 static uint16_t* rgb = nullptr;         // SKY_W*SKY_H RGB565 (palet uygulanmis)
-static uint16_t* bigBuf[2] = {nullptr, nullptr};  // SKY_BW*SKY_BH: rgb'nin 2x bilinear buyutulmusu (LVGL icin), on/arka
-static volatile int frontIdx = 0;
+static uint16_t* big = nullptr;         // SKY_BW*SKY_BH: 2x bilinear buyutulmus (LVGL bunu cizer); yalniz degisen karolar guncellenir
+static uint8_t* pubIdx = nullptr;       // gorevin yayinladigi son kare (palet indeksleri)
+static uint8_t* lastIdx = nullptr;      // LVGL tarafinin en son isledigi kare
+static uint16_t pubPal[16], lastPal[16];
+static SemaphoreHandle_t pmtx;
 static volatile uint32_t frameSeq = 0;
 static volatile bool wantFrames = false;  // arayuz Ana sekmesindeyken gorev kare uretir
 static SemaphoreHandle_t smtx;
@@ -812,8 +815,10 @@ void skyInit() {
   if (idx) return;
   idx = (uint8_t*)heap_caps_calloc(SKY_W * SKY_H, 1, MALLOC_CAP_SPIRAM);
   rgb = (uint16_t*)heap_caps_calloc(SKY_W * SKY_H, 2, MALLOC_CAP_SPIRAM);
-  bigBuf[0] = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
-  bigBuf[1] = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
+  big = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
+  pubIdx = (uint8_t*)heap_caps_calloc(SKY_W * SKY_H, 1, MALLOC_CAP_SPIRAM);
+  lastIdx = (uint8_t*)heap_caps_calloc(SKY_W * SKY_H, 1, MALLOC_CAP_SPIRAM);
+  pmtx = xSemaphoreCreateMutex();
   smtx = xSemaphoreCreateMutex();
   xTaskCreatePinnedToCore(skyTask, "Sky", 6144, nullptr, 1, nullptr, 0);
 }
@@ -865,24 +870,12 @@ static void stepLocked() {
   else if (wxDemoIdx >= 0) demoLabel = String("DEMO ") + WX_NAME[wxDemoIdx];
   else demoLabel = "";
 
-  for (int i = 0; i < SKY_W * SKY_H; i++) rgb[i] = S.pal[idx[i] & 15];
-  uint16_t* back = bigBuf[frontIdx ^ 1];
-  // 2x bilinear: her kaynak piksel 2x2 hedef; yari konumlar komsu ortalamasi (RGB565 bit hilesi)
-  auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
-  for (int y = 0; y < SKY_H; y++) {
-    const uint16_t* r0 = rgb + y * SKY_W;
-    const uint16_t* r1 = y + 1 < SKY_H ? r0 + SKY_W : r0;
-    uint16_t* d0 = back + (size_t)(2 * y) * SKY_BW;
-    uint16_t* d1 = d0 + SKY_BW;
-    for (int x = 0; x < SKY_W; x++) {
-      int xn = x + 1 < SKY_W ? x + 1 : x;
-      uint16_t a = r0[x], b = r0[xn], c = r1[x], d = r1[xn];
-      uint16_t ab = avg(a, b), cd = avg(c, d);
-      d0[2 * x] = a;
-      d0[2 * x + 1] = ab;
-      d1[2 * x] = avg(a, c);
-      d1[2 * x + 1] = avg(ab, cd);
-    }
+  // yayinla (LVGL tarafi degisen karolari buradan alir)
+  if (xSemaphoreTake(pmtx, pdMS_TO_TICKS(50)) == pdTRUE) {
+    memcpy(pubIdx, idx, SKY_W * SKY_H);
+    memcpy(pubPal, S.pal, sizeof(pubPal));
+    frameSeq++;
+    xSemaphoreGive(pmtx);
   }
 }
 
@@ -898,7 +891,66 @@ void skyStepIfStale(uint32_t maxAgeMs) {
   if (millis() - lastStep > maxAgeMs) skyStep();
 }
 
-const uint16_t* skyRGB565() { return bigBuf[frontIdx]; }
+const uint16_t* skyRGB565() { return big; }
+
+// Karo karsilastirmasi: 16x16 kaynak piksellik karolar (+1 piksel sag/alt komsu: bilinear). Degisenleri 2x buyutup `big`e yaz,
+// satir bazinda birlestirilmis dikdortgenleri (2x koordinat) dondur. Boylece kare basina PSRAM yazimi yalniz degisen yerler kadar olur.
+static const int TW = 16, TH = 16, NTX = (SKY_W + TW - 1) / TW, NTY = (SKY_H + TH - 1) / TH;
+int skyApplyDirty(SkyRect* out, int maxOut) {
+  if (!big || xSemaphoreTake(pmtx, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
+  static bool first = true;
+  bool palChanged = memcmp(lastPal, pubPal, sizeof(pubPal)) != 0 || first;
+  first = false;
+  static uint8_t dirty[NTY][NTX];
+  int nd = 0;
+  for (int ty = 0; ty < NTY; ty++)
+    for (int tx = 0; tx < NTX; tx++) {
+      int x0 = tx * TW, y0 = ty * TH, x1 = min(x0 + TW + 1, SKY_W), y1 = min(y0 + TH + 1, SKY_H);
+      bool d = palChanged;
+      for (int y = y0; y < y1 && !d; y++)
+        if (memcmp(pubIdx + y * SKY_W + x0, lastIdx + y * SKY_W + x0, x1 - x0)) d = true;
+      dirty[ty][tx] = d;
+      nd += d;
+    }
+  if (nd) {
+    auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
+    for (int ty = 0; ty < NTY; ty++)
+      for (int tx = 0; tx < NTX; tx++) {
+        if (!dirty[ty][tx]) continue;
+        int xs = tx * TW, ys = ty * TH, xe = min(xs + TW, SKY_W), ye = min(ys + TH, SKY_H);
+        for (int y = ys; y < ye; y++) {
+          const uint8_t* i0 = pubIdx + y * SKY_W;
+          const uint8_t* i1 = y + 1 < SKY_H ? i0 + SKY_W : i0;
+          uint16_t* d0 = big + (size_t)(2 * y) * SKY_BW;
+          uint16_t* d1 = d0 + SKY_BW;
+          for (int x = xs; x < xe; x++) {
+            int xn = x + 1 < SKY_W ? x + 1 : x;
+            uint16_t a = pubPal[i0[x] & 15], b = pubPal[i0[xn] & 15], c = pubPal[i1[x] & 15], d = pubPal[i1[xn] & 15];
+            uint16_t ab = avg(a, b), cd = avg(c, d);
+            d0[2 * x] = a;
+            d0[2 * x + 1] = ab;
+            d1[2 * x] = avg(a, c);
+            d1[2 * x + 1] = avg(ab, cd);
+          }
+        }
+      }
+    memcpy(lastIdx, pubIdx, SKY_W * SKY_H);
+    memcpy(lastPal, pubPal, sizeof(lastPal));
+  }
+  xSemaphoreGive(pmtx);
+  // satir bazinda bitisik dirty karolari birlestir
+  int n = 0;
+  for (int ty = 0; ty < NTY && n < maxOut; ty++) {
+    int tx = 0;
+    while (tx < NTX && n < maxOut) {
+      if (!dirty[ty][tx]) { tx++; continue; }
+      int t0 = tx;
+      while (tx < NTX && dirty[ty][tx]) tx++;
+      out[n++] = {t0 * TW * 2, ty * TH * 2, min(tx * TW, SKY_W) * 2 - 1, min((ty + 1) * TH, SKY_H) * 2 - 1};
+    }
+  }
+  return n;
+}
 uint32_t skyFrameSeq() { return frameSeq; }
 void skyWant(bool on) { wantFrames = on; }
 
@@ -906,9 +958,7 @@ static void skyTask(void*) {
   uint32_t next = millis();
   for (;;) {
     if (wantFrames) {
-      skyStep();                 // arka tampona yazar
-      frontIdx ^= 1;             // sonra on tampon olur (LVGL bir sonraki karede bunu okur)
-      frameSeq++;
+      skyStep();                 // sahneyi cizer ve yayinlar (frameSeq++)
       next += 65;                // ~15 kare/sn (ekran 30,8 Hz: 2 vsync'te bir)
       int32_t wait = (int32_t)(next - millis());
       if (wait < 0) { next = millis(); wait = 1; }

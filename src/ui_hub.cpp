@@ -839,8 +839,14 @@ static void skyTick(lv_timer_t*) {
   uint32_t seq = skyFrameSeq();
   if (seq == seen) return;  // yeni kare yok
   seen = seq;
-  skyDsc.data = (const uint8_t*)skyRGB565();  // gorev yeni kareyi on tampona koydu
-  lv_obj_invalidate(skyImg);
+  static SkyRect rc[32];
+  int n = skyApplyDirty(rc, 32);
+  if (n == 0) return;
+  if (lv_image_get_scale(skyImg) != 256 || n >= 32) { lv_obj_invalidate(skyImg); return; }
+  for (int i = 0; i < n; i++) {
+    lv_area_t a = {rc[i].x1, rc[i].y1, rc[i].x2, rc[i].y2};
+    lv_obj_invalidate_area(skyImg, &a);
+  }
 }
 
 static void tick(lv_timer_t*) {
