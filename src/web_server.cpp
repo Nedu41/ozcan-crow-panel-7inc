@@ -3,6 +3,7 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
+#include "efekt.h"
 #include <vector>
 #include "app_state.h"
 #include "storage.h"
@@ -657,6 +658,8 @@ void setupWebServer() {
   // gönderiyor, durum güncellemeleri de 2sn'lik polling yerine push ediliyor
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
+
+  efektRoutes();
 
   // Uyarilar (hava/deprem): onay + teshis + deneme
   server.on("/alert_ack", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {

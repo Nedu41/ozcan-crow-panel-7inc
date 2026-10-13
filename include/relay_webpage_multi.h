@@ -1197,6 +1197,16 @@ function renderSettings() {
             </div>
 
             <div id="scanResults"></div>
+            <div class="dev-card" style="margin-bottom:12px">
+                <div class="dev-card-head"><b>🤖 Yapay zeka efekt anahtarı (Gemini)</b></div>
+                <div class="dev-card-row"><span>Anahtar</span>
+                    <input type="password" id="aiKey" class="compact-input" placeholder="API anahtarı yapıştırın">
+                    <button class="btn" onclick="saveAiKey()">Kaydet</button>
+                </div>
+                <div class="dev-card-row"><span id="aiKeyState">…</span>
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7fe0dc">Ücretsiz anahtar al: aistudio.google.com/apikey</a>
+                </div>
+            </div>
             <div class="dev-list">`;
 
         DEVICES.forEach((d, i) => {
@@ -1249,6 +1259,7 @@ function renderSettings() {
         </div>`;
 
         document.getElementById("content").innerHTML = html;
+        loadAiKey();
     });
 }
 
@@ -1608,6 +1619,21 @@ function confirmScanDevice(idx) {
         return;
     }
     postDevices(arr, `✓ ${name} eklendi`).then(() => renderSettings());
+}
+
+function loadAiKey() {
+    fetch("/api/aikey").then(r => r.json()).then(j => {
+        const e = document.getElementById("aiKeyState");
+        if (e) e.textContent = j.var ? "✓ Anahtar kayıtlı" : "Anahtar yok";
+    }).catch(() => {});
+}
+function saveAiKey() {
+    const v = document.getElementById("aiKey").value.trim();
+    if (!v) { toast("Anahtar boş", true); return; }
+    fetch("/api/aikey?set=" + encodeURIComponent(v)).then(() => {
+        document.getElementById("aiKey").value = "";
+        toast("✓ Anahtar kaydedildi"); loadAiKey();
+    }).catch(() => toast("✗ Kaydedilemedi", true));
 }
 
 function restartHub() {

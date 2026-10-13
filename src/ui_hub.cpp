@@ -1,4 +1,4 @@
-// HUB sayfaları: Ana (saat, hava, uyarı, haber), Lambalar, LedPanel, Ayar.
+// HUB sayfaları: Ana (saat, hava, uyarı, haber), Lambalar, Efekt, Ayar.
 // LVGL yalnızca ana döngü görevinden çağrılır; veri/ağ işleri diğer görevlerde (paylaşılan durum mutex'le okunur).
 #include "ui_hub.h"
 
@@ -12,14 +12,14 @@
 #include "events.h"
 #include "storage.h"
 #include "telegram.h"
-#include "ledpanel.h"
+#include "efekt.h"
 #include "ui.h"
 #include "ui_common.h"
 #include "web_server.h"
 #include "wifi_nets.h"
 
 static lv_obj_t* tv;
-static lv_obj_t *tabHome, *tabLamps, *tabLed, *tabSet;
+static lv_obj_t *tabHome, *tabLamps, *tabFx, *tabSet;
 
 // ------------------------------------------------------------------ yardımcılar
 static bool takeMutex(SemaphoreHandle_t m) { return m && xSemaphoreTake(m, pdMS_TO_TICKS(15)) == pdTRUE; }
@@ -328,98 +328,94 @@ static void tickLamps() {
   xSemaphoreGive(statusMutex);
 }
 
-// ------------------------------------------------------------------ LEDPANEL
-static lv_obj_t *ledDot, *ledStat, *ledSpeedLbl, *ledBrLbl, *ledSpeed, *ledBright, *ledRotBtn;
-static lv_obj_t* fxBtn[16];
-struct Fx { int id; const char* name; };
-static const Fx FX[] = {{31, "Alev"}, {35, "Plazma"}, {36, "Gökkuşağı"}, {34, "Matrix"}, {37, "Yıldızlı gece"},
-                        {41, "Kar"}, {42, "Yağmur"}, {43, "Fırtına"}, {44, "Doğa manzarası"}, {45, "Okyanus"},
-                        {46, "Havai fişek"}, {47, "Radar"}, {48, "Kalp atışı"}};
-static const int NFX = sizeof(FX) / sizeof(FX[0]);
-static int fxHiz = 60;  // son seçilen hız (ms)
+// ------------------------------------------------------------------ EFEKT (yapay zeka efektleri, PC köprüsü)
+static lv_obj_t *fxDot, *fxStat, *fxHizLbl, *fxIsikLbl, *fxGrid, *fxSaveBtn, *fxHizSlider, *fxIsikSlider;
+static uint32_t fxListShown = 0;
+static char fxPending[32];
 
-static void onFx(lv_event_t* e) {
-  int idx = (int)(intptr_t)lv_event_get_user_data(e);
-  ledpanelSend("/api/fx?id=" + String(FX[idx].id) + "&hiz=" + String(fxHiz));
+static void onFxNewOk(const char* t) {
+  if (!*t) return;
+  efektUret(String(t));
+  efektEkranAc();
 }
-static void onSpeed(lv_event_t* e) {
-  int v = lv_slider_get_value(lv_event_get_target_obj(e));  // sağ = hızlı
-  fxHiz = 310 - v;
+static void onFxNew(lv_event_t*) { uiPrompt("Nasıl bir efekt istersin?", "", false, onFxNewOk); }
+static void onFxPlay(lv_event_t* e) {
+  efektOynat(String((const char*)lv_event_get_user_data(e)));
+  efektEkranAc();
+}
+static void onFxDelOk() { efektSil(String(fxPending)); }
+static void onFxDel(lv_event_t* e) {
+  char b[80];
+  strlcpy(fxPending, (const char*)lv_event_get_user_data(e), sizeof(fxPending));
+  snprintf(b, sizeof(b), "\"%s\" silinsin mi?", fxPending);
+  uiConfirm(b, onFxDelOk);
+}
+static void onFxSaveOk(const char* t) { if (*t) efektKaydet(String(t)); }
+static void onFxSave(lv_event_t*) { uiPrompt("Son efektin adı", "", false, onFxSaveOk); }
+static void onFxTune(lv_event_t* e) {
+  float hiz = lv_slider_get_value(fxHizSlider) / 100.0f, isik = lv_slider_get_value(fxIsikSlider) / 100.0f;
   char b[40];
-  snprintf(b, sizeof(b), "Hız (%d ms)", fxHiz);
-  lv_label_set_text(ledSpeedLbl, b);
-  if (lv_event_get_code(e) == LV_EVENT_RELEASED)
-    ledpanelSend("/api/set?fxs=" + String(fxHiz));
+  snprintf(b, sizeof(b), "Hız (%.1fx)", hiz);
+  lv_label_set_text(fxHizLbl, b);
+  snprintf(b, sizeof(b), "Işık (%%%d)", (int)(isik * 100));
+  lv_label_set_text(fxIsikLbl, b);
+  if (lv_event_get_code(e) == LV_EVENT_RELEASED) efektAyar(hiz, isik);
 }
-static void onBright(lv_event_t* e) {
-  int v = lv_slider_get_value(lv_event_get_target_obj(e));
-  char b[40];
-  snprintf(b, sizeof(b), "Işık (%d)", v);
-  lv_label_set_text(ledBrLbl, b);
-  if (lv_event_get_code(e) == LV_EVENT_RELEASED) ledpanelSend("/api/set?bp=" + String(v));
-}
-static void onLedRot(lv_event_t*) { ledpanelSend("/api/set?rot=" + String((ledState.rot + 1) & 3)); }
-static void onLedHostOk(const char* t) { ledpanelSetHost(String(t)); }
-static void onLedHost(lv_event_t*) { uiPrompt("LedPanel adresi (boş = otomatik)", ledpanelHost().c_str(), false, onLedHostOk); }
+static void onFxStop(lv_event_t*) { efektDurdur(); }
 
-static void buildLed() {
-  lv_obj_t* c = uiCard(tabLed);
+static void buildFx() {
+  lv_obj_t* c = uiCard(tabFx);
   lv_obj_t* r = uiRow(c);
-  ledDot = dot(r);
-  ledStat = uiLabel(r, "LedPanel aranıyor…", &noto20, C_TEXT);
-  lv_obj_set_flex_grow(ledStat, 1);
-  uiBtn(r, "Adres", false, onLedHost, LV_SIZE_CONTENT, 44);
+  fxDot = dot(r);
+  fxStat = uiLabel(r, "PC köprüsü aranıyor…", &noto20, C_TEXT);
+  lv_obj_set_flex_grow(fxStat, 1);
+  uiBtn(r, "Yeni efekt", true, onFxNew, LV_SIZE_CONTENT, 48);
 
-  lv_obj_t* fc = uiCard(tabLed);
-  uiLabel(fc, "Efektler", &noto16, C_DIM);
-  lv_obj_t* grid = lv_obj_create(fc);
-  lv_obj_set_width(grid, LV_PCT(100));
-  lv_obj_set_height(grid, LV_SIZE_CONTENT);
-  lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(grid, 0, 0);
-  lv_obj_set_style_pad_all(grid, 0, 0);
-  lv_obj_set_style_pad_gap(grid, 8, 0);
-  lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_remove_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
-  for (int i = 0; i < NFX; i++) {
-    fxBtn[i] = uiBtn(grid, FX[i].name, false, nullptr, LV_SIZE_CONTENT, 52);
-    lv_obj_add_event_cb(fxBtn[i], onFx, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+  lv_obj_t* fc = uiCard(tabFx);
+  uiLabel(fc, "Kayıtlı efektler (uzun bas: sil)", &noto16, C_DIM);
+  fxGrid = lv_obj_create(fc);
+  lv_obj_set_width(fxGrid, LV_PCT(100));
+  lv_obj_set_height(fxGrid, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_opa(fxGrid, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(fxGrid, 0, 0);
+  lv_obj_set_style_pad_all(fxGrid, 0, 0);
+  lv_obj_set_style_pad_gap(fxGrid, 8, 0);
+  lv_obj_set_flex_flow(fxGrid, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_remove_flag(fxGrid, LV_OBJ_FLAG_SCROLLABLE);
+  fxSaveBtn = uiBtn(fc, "Son efekti kaydet", false, onFxSave, LV_PCT(100), 48);
+
+  lv_obj_t* sc = uiCard(tabFx);
+  fxHizLbl = uiLabel(sc, "Hız (1.0x)", &noto20, C_TEXT);
+  fxHizSlider = uiSlider(sc, 10, 400, 100, C_CYAN);
+  fxIsikLbl = uiLabel(sc, "Işık (%100)", &noto20, C_TEXT);
+  fxIsikSlider = uiSlider(sc, 10, 200, 100, C_ORANGE);
+  for (lv_obj_t* s : {fxHizSlider, fxIsikSlider}) {
+    lv_obj_add_event_cb(s, onFxTune, LV_EVENT_VALUE_CHANGED, nullptr);
+    lv_obj_add_event_cb(s, onFxTune, LV_EVENT_RELEASED, nullptr);
   }
-
-  lv_obj_t* sc = uiCard(tabLed);
-  ledSpeedLbl = uiLabel(sc, "Hız (60 ms)", &noto20, C_TEXT);
-  ledSpeed = uiSlider(sc, 10, 300, 250, C_CYAN);
-  lv_obj_add_event_cb(ledSpeed, onSpeed, LV_EVENT_VALUE_CHANGED, nullptr);
-  lv_obj_add_event_cb(ledSpeed, onSpeed, LV_EVENT_RELEASED, nullptr);
-  ledBrLbl = uiLabel(sc, "Işık", &noto20, C_TEXT);
-  ledBright = uiSlider(sc, 4, 30, 10, C_ORANGE);
-  lv_obj_add_event_cb(ledBright, onBright, LV_EVENT_VALUE_CHANGED, nullptr);
-  lv_obj_add_event_cb(ledBright, onBright, LV_EVENT_RELEASED, nullptr);
-  ledRotBtn = uiBtn(sc, "Yön: döndür", false, onLedRot, LV_PCT(100), 52);
+  uiBtn(sc, "Durdur", false, onFxStop, LV_PCT(100), 48);
 }
 
-static void tickLed() {
-  bool ok = ledState.ok;
-  setDot(ledDot, ok);
+static void tickFx() {
+  bool ok = efektSt.ok;
+  setDot(fxDot, ok);
   char b[96];
-  if (ok) snprintf(b, sizeof(b), "Bağlı  %s   %d fps", ledState.ip, ledState.fps);
-  else snprintf(b, sizeof(b), "LedPanel bulunamadı (ledpanel.local)");
-  uiSetText(ledStat, b);
-  for (int i = 0; i < NFX; i++) uiBtnOn(fxBtn[i], ok && ledState.pat == FX[i].id, C_CYAN);
-  if (ok) {
-    if (!lv_obj_has_state(ledSpeed, LV_STATE_PRESSED) && ledState.fxs >= 10) {
-      fxHiz = ledState.fxs;
-      lv_slider_set_value(ledSpeed, 310 - fxHiz, LV_ANIM_OFF);
-      snprintf(b, sizeof(b), "Hız (%d ms)", fxHiz);
-      uiSetText(ledSpeedLbl, b);
+  if (!ok) snprintf(b, sizeof(b), "PC köprüsü yok (efekt_koprusu.py açık olmalı)");
+  else if (!strcmp(efektSt.durum, "uretiyor")) snprintf(b, sizeof(b), "Köprü bağlı - efekt üretiliyor…");
+  else if (!strcmp(efektSt.durum, "hata")) snprintf(b, sizeof(b), "Köprü bağlı - son üretim başarısız");
+  else snprintf(b, sizeof(b), "Köprü bağlı");
+  uiSetText(fxStat, b);
+  if (fxListShown != efektSt.listeSurum) {
+    fxListShown = efektSt.listeSurum;
+    lv_obj_clean(fxGrid);
+    static char names[24][32];
+    int n = efektListe(names, 24);
+    for (int i = 0; i < n; i++) {
+      lv_obj_t* bt = uiBtn(fxGrid, names[i], false, nullptr, LV_SIZE_CONTENT, 52);
+      lv_obj_add_event_cb(bt, onFxPlay, LV_EVENT_SHORT_CLICKED, names[i]);
+      lv_obj_add_event_cb(bt, onFxDel, LV_EVENT_LONG_PRESSED, names[i]);
     }
-    if (!lv_obj_has_state(ledBright, LV_STATE_PRESSED) && ledState.bp >= 4) {
-      lv_slider_set_value(ledBright, constrain(ledState.bp, 4, 30), LV_ANIM_OFF);
-      snprintf(b, sizeof(b), "Işık (%d)", ledState.bp);
-      uiSetText(ledBrLbl, b);
-    }
-    snprintf(b, sizeof(b), "Yön: %d  (dokun: döndür)", ledState.rot);
-    uiSetText(uiBtnLabel(ledRotBtn), b);
+    if (n == 0) uiLabel(fxGrid, "Henüz kayıtlı efekt yok", &noto16, C_DIM);
   }
 }
 
@@ -450,6 +446,11 @@ static void onTgTok(const char* t) {
   uiPrompt("Telegram sohbet (chat) no", telegramChatId().c_str(), false, onTgChat);
 }
 static void onSetTg(lv_event_t*) { uiPrompt("Telegram bot token", "", false, onTgTok); }
+
+static void onAiKey(const char* t) { efektAnahtar(String(t)); }
+static void onSetAi(lv_event_t*) {
+  uiPrompt("Gemini API anahtarı (alma: aistudio.google.com/apikey)", "", false, onAiKey);
+}
 
 static String tmpCity;
 static void onDistrict(const char* t) {
@@ -504,6 +505,7 @@ static void buildSet() {
   uiBtn(r, "Ekranı döndür", false, onSetRot);
   uiBtn(r, "Hava konumu", false, onSetLoc);
   uiBtn(r, "Telegram", false, onSetTg);
+  uiBtn(r, "Yapay zeka anahtarı", false, onSetAi);
   uiBtn(r, "Yeniden başlat", false, onSetRestart);
   uiBtn(r, "WiFi'leri sil", false, onSetWipe);
 }
@@ -513,11 +515,11 @@ static void tickSet() {
   if (millis() - last < 2000) return;
   last = millis();
   uint32_t up = millis() / 1000;
-  char b[256];
+  char b[360];
   snprintf(b, sizeof(b),
            "Ağ: %s   Sinyal: %d dBm\nIP: %s   Adres: %s.local\nSürüm: %s   Telegram: %s\nÇalışma: %lu sa %lu dk   Bellek: %u KB boş",
            WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.localIP().toString().c_str(), "crowhub", FW_VERSION,
-           telegramConfigured() ? "açık" : "kapalı", (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60), (unsigned)(ESP.getFreeHeap() / 1024));
+           telegramConfigured() ? "açık" : "kapalı", efektAnahtarVar() ? "anahtar var" : "anahtar yok", (unsigned long)(up / 3600), (unsigned long)(up / 60 % 60), (unsigned)(ESP.getFreeHeap() / 1024));
   uiSetText(setInfo, b);
 }
 
@@ -541,7 +543,7 @@ static void tick(lv_timer_t*) {
   uint32_t act = lv_tabview_get_tab_active(tv);
   tickHome();  // saat her zaman; ucuz
   if (act == 1) tickLamps();
-  if (act == 2) tickLed();
+  if (act == 2) tickFx();
   if (act == 3) tickSet();
 }
 
@@ -570,7 +572,7 @@ lv_obj_t* hubUiCreate() {
 
   tabHome = newTab("Ana");
   tabLamps = newTab("Lambalar");
-  tabLed = newTab("LedPanel");
+  tabFx = newTab("Efekt");
   tabSet = newTab("Ayar");
   // Sekme düğmeleri: siyah çerçeveli koyu düğme; seçili = pastel zemin + koyu yazı
   for (uint32_t i = 0; i < lv_obj_get_child_count(bar); i++) {
@@ -593,10 +595,10 @@ lv_obj_t* hubUiCreate() {
   }
   buildHome();
   buildLamps();
-  buildLed();
+  buildFx();
   buildSet();
   placeTabs();
   lv_timer_create(tick, 500, nullptr);
-  ledpanelStart();
+  efektStart();
   return scr;
 }

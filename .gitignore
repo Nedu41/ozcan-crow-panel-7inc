@@ -2,3 +2,7 @@ src/secrets.h
 .pio/
 .vscode/
 include/secrets.h
+araclar/.ai_key
+araclar/.kopru_anahtar
+__pycache__/
+araclar/efektler/_son.py
