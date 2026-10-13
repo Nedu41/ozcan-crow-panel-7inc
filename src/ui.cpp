@@ -160,7 +160,7 @@ static void fillList(int n) {
     lv_obj_set_style_radius(b, 10, 0);
     lv_obj_set_style_bg_color(b, C_CARD, 0);
     lv_obj_set_style_border_color(b, C_FRAME, 0);
-    lv_obj_set_style_border_width(b, 3, 0);
+    lv_obj_set_style_border_width(b, 2, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -250,7 +250,7 @@ static void styleTextarea(lv_obj_t* ta) {
   lv_obj_set_style_bg_color(ta, C_CARD, 0);
   lv_obj_set_style_text_color(ta, C_TEXT, 0);
   lv_obj_set_style_border_color(ta, C_FRAME, 0);
-  lv_obj_set_style_border_width(ta, 3, 0);
+  lv_obj_set_style_border_width(ta, 2, 0);
   lv_obj_set_style_text_font(ta, &noto28, 0);
 }
 

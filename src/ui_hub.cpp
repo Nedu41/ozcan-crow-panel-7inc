@@ -27,7 +27,7 @@ static bool takeMutex(SemaphoreHandle_t m) { return m && xSemaphoreTake(m, pdMS_
 
 static lv_obj_t* newTab(const char* name) {
   lv_obj_t* t = lv_tabview_add_tab(tv, name);
-  lv_obj_set_style_pad_all(t, 10, 0);
+  lv_obj_set_style_pad_all(t, 6, 0);
   lv_obj_set_style_pad_gap(t, 10, 0);
   lv_obj_set_style_bg_opa(t, LV_OPA_TRANSP, 0);
   lv_obj_set_flex_flow(t, LV_FLEX_FLOW_COLUMN);
@@ -54,7 +54,7 @@ static void setDot(lv_obj_t* d, bool ok) {
 }
 
 // ------------------------------------------------------------------ ANA
-static lv_obj_t *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
+static lv_obj_t *lblLoc, *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
 static lv_obj_t *skyCard, *skyImg, *boxT, *boxW, *boxF, *lblTempC, *lblWindT, *lblWindDir, *lblWindVal, *lblWindU;
 static const int IC_W = 26, IC_H = 22;
 static lv_obj_t *fcCol[7], *fcDay[7], *fcTmp[7], *fcIcon[7];
@@ -90,6 +90,10 @@ static void buildHome() {
   lv_obj_t* r = uiRow(tabHome);
   lv_obj_set_flex_align(r, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lblTime = uiLabel(r, "--:--", &lv_font_montserrat_48, C_CYAN);
+  lblLoc = uiLabel(r, "", &noto28, C_TEXT);  // saatin yaninda mahalle / ilce
+  lv_obj_set_flex_grow(lblLoc, 1);
+  lv_label_set_long_mode(lblLoc, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(lblLoc, LV_TEXT_ALIGN_CENTER, 0);
   lblDate = uiLabel(r, "", &noto20, C_TEXT);
   lv_obj_set_style_text_align(lblDate, LV_TEXT_ALIGN_RIGHT, 0);
 
@@ -103,7 +107,7 @@ static void buildHome() {
   lv_obj_set_style_pad_all(skyCard, 0, 0);
   lv_obj_set_style_radius(skyCard, 12, 0);
   lv_obj_set_style_border_color(skyCard, C_FRAME, 0);
-  lv_obj_set_style_border_width(skyCard, 3, 0);
+  lv_obj_set_style_border_width(skyCard, 2, 0);
   lv_obj_set_style_clip_corner(skyCard, true, 0);
   lv_obj_remove_flag(skyCard, LV_OBJ_FLAG_SCROLLABLE);
   skyDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
@@ -164,11 +168,37 @@ static void buildHome() {
   uiBtn(cardAlert, "Anladım", false, onAlertAck);
   lv_obj_add_flag(cardAlert, LV_OBJ_FLAG_HIDDEN);
 
-  lv_obj_t* nc = uiCard(tabHome);
-  uiLabel(nc, "Dünya haberleri", &noto16, C_DIM);
-  lblNews = uiLabel(nc, "Haberler yükleniyor…", &noto20, C_TEXT);
-  lv_obj_set_width(lblNews, LV_PCT(100));
-  lv_label_set_long_mode(lblNews, LV_LABEL_LONG_WRAP);
+}
+
+// ---- alt kayan yazi: kendi animasyonumuz (LVGL dairesel kaydirma uzun metinde cok hizli kaliyordu)
+static String tickItems[24];
+static int tickN = 0, tickStart = 0;
+static const int TICK_SPEED = 90;  // px/sn
+static void tickerNext(lv_anim_t*) {
+  if (!lblNews || tickN == 0) return;
+  String t;
+  int used = 0;
+  while (used < tickN) {
+    String cand = t + tickItems[(tickStart + used) % tickN] + "   +++   ";
+    if (used > 0 && lv_text_get_width(cand.c_str(), cand.length(), &noto20, 0) > 6500) break;  // LVGL koordinat siniri ~8191
+    t = cand;
+    used++;
+  }
+  tickStart = (tickStart + used) % tickN;
+  lv_anim_delete(lblNews, nullptr);
+  lv_label_set_text(lblNews, t.c_str());
+  lv_obj_update_layout(lblNews);
+  int tw = lv_obj_get_width(lblNews);
+  int cw = lv_obj_get_content_width(lv_obj_get_parent(lblNews));
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, lblNews);
+  lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+  lv_anim_set_values(&a, cw, -tw);
+  lv_anim_set_duration(&a, (uint32_t)(cw + tw) * 1000UL / TICK_SPEED);
+  lv_anim_set_path_cb(&a, lv_anim_path_linear);
+  lv_anim_set_completed_cb(&a, tickerNext);
+  lv_anim_start(&a);
 }
 
 static void tickHome() {
@@ -179,7 +209,7 @@ static void tickHome() {
   if (getLocalTime(&t, 0)) {
     snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
     uiSetText(lblTime, buf);
-    snprintf(buf, sizeof(buf), "%d %s %d\n%s", t.tm_mday, ay[t.tm_mon], t.tm_year + 1900, gun[t.tm_wday]);
+    snprintf(buf, sizeof(buf), "%d %s %d\n%s   v%s", t.tm_mday, ay[t.tm_mon], t.tm_year + 1900, gun[t.tm_wday], FW_VERSION);
     uiSetText(lblDate, buf);
   }
 
@@ -189,6 +219,7 @@ static void tickHome() {
     float temp = CURRENT_WEATHER_DOC["temp"] | 0.0f;
     float wind = CURRENT_WEATHER_DOC["wind_speed"] | 0.0f;
     String wdir = CURRENT_WEATHER_DOC["wind_direction"] | "";
+    String cityFull = CURRENT_WEATHER_DOC["city_name"] | "";
     int code = CURRENT_WEATHER_DOC["weathercode"] | -1;
     int n = 0, c[7], mx[7], mn[7];
     for (JsonArray d : CURRENT_WEATHER_DOC["fc"].as<JsonArray>()) {
@@ -196,6 +227,11 @@ static void tickHome() {
       c[n] = d[0] | -1; mx[n] = d[1] | 0; mn[n] = d[2] | 0; n++;
     }
     xSemaphoreGive(weatherMutex);
+    {  // saatin yaninda mahalle + ilce: konum adinin ilk iki parcasi
+      cityFull.replace(" Mahallesi", "");
+      int c1 = cityFull.indexOf(','), c2 = c1 < 0 ? -1 : cityFull.indexOf(',', c1 + 1);
+      uiSetText(lblLoc, (c2 > 0 ? cityFull.substring(0, c2) : cityFull).c_str());
+    }
     if (desc == "OK") {
       snprintf(buf, sizeof(buf), "%.0f", temp);
       uiSetText(lblTemp, buf);
@@ -252,30 +288,26 @@ static void tickHome() {
     }
   }
 
-  // haber
+  // haber: alttaki kayan yazi (parti parti, sabit hiz)
   String news;
   if (takeMutex(newsMutex)) { news = NEWS_TICKER_TEXT; xSemaphoreGive(newsMutex); }
-  if (news.length()) {
-    // başlıklar "     +++     " ile ayrılı; sayfa başına 4 başlık, 12 sn'de bir sonraki sayfa
+  if (news.length() && news != lastNews && lblNews) {
+    lastNews = news;
     static const char* SEP = "     +++     ";
-    int count = 1;
-    for (int p = news.indexOf(SEP); p >= 0; p = news.indexOf(SEP, p + 1)) count++;
-    const int PER = 4;
-    int pages = (count + PER - 1) / PER, base = ((millis() / 12000) % pages) * PER;
-    String txt;
+    tickN = 0;
     int start = 0;
-    for (int k = 0; k < count; k++) {
+    while (start <= (int)news.length() && tickN < 24) {
       int end = news.indexOf(SEP, start);
       String one = end < 0 ? news.substring(start) : news.substring(start, end);
-      if (k >= base && k < base + PER) txt += String(txt.length() ? "\n" : "") + "- " + one;
+      one.trim();
+      if (one.length()) tickItems[tickN++] = one;
       if (end < 0) break;
       start = end + strlen(SEP);
     }
-    if (txt != lastNews) {
-      lastNews = txt;
-      lv_label_set_text(lblNews, txt.c_str());
-    }
-  }}
+    tickStart = 0;
+    tickerNext(nullptr);
+  }
+}
 
 // ------------------------------------------------------------------ LAMBALAR
 struct CardRef { int dev; int relay; };
@@ -781,16 +813,19 @@ lv_obj_t* hubUiCreate() {
   lv_obj_set_style_text_font(scr, &noto20, 0);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
+  lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_gap(scr, 0, 0);
   tv = lv_tabview_create(scr);
-  lv_obj_set_size(tv, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_width(tv, LV_PCT(100));
+  lv_obj_set_flex_grow(tv, 1);
   lv_obj_set_style_bg_color(tv, C_BG, 0);
   lv_obj_set_style_bg_opa(tv, LV_OPA_COVER, 0);
   lv_obj_t* bar = lv_tabview_get_tab_bar(tv);
   lv_obj_set_style_bg_color(bar, C_CARD, 0);
   lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(bar, 0, 0);
-  lv_obj_set_style_pad_all(bar, 4, 0);
-  lv_obj_set_style_pad_gap(bar, 4, 0);
+  lv_obj_set_style_pad_all(bar, 2, 0);
+  lv_obj_set_style_pad_gap(bar, 2, 0);
   lv_obj_remove_flag(lv_tabview_get_content(tv), LV_OBJ_FLAG_SCROLLABLE);  // yatay kaydırma yok (kaydırıcılarla karışmasın)
 
   tabHome = newTab("Ana");
@@ -806,16 +841,31 @@ lv_obj_t* hubUiCreate() {
     lv_obj_set_style_text_color(b, C_TEXT, 0);
     lv_obj_set_style_text_font(b, &noto20, 0);
     lv_obj_set_style_border_color(b, C_FRAME, 0);
-    lv_obj_set_style_border_width(b, 3, 0);
+    lv_obj_set_style_border_width(b, 2, 0);
     lv_obj_set_style_border_side(b, LV_BORDER_SIDE_FULL, 0);
     lv_obj_set_style_bg_color(b, C_CYAN, LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_STATE_CHECKED);
     lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_NONE, LV_STATE_CHECKED);
     lv_obj_set_style_text_color(b, C_ONPASTEL, LV_STATE_CHECKED);
     lv_obj_set_style_border_color(b, C_FRAME, LV_STATE_CHECKED);
-    lv_obj_set_style_border_width(b, 3, LV_STATE_CHECKED);
+    lv_obj_set_style_border_width(b, 2, LV_STATE_CHECKED);
     lv_obj_set_style_border_side(b, LV_BORDER_SIDE_FULL, LV_STATE_CHECKED);
   }
+  // Alt kayan yazi seridi (tum sekmelerde, tam genislik): dunya haberleri
+  lv_obj_t* tk = lv_obj_create(scr);
+  lv_obj_set_size(tk, LV_PCT(100), 34);
+  lv_obj_set_style_bg_color(tk, C_CARD, 0);
+  lv_obj_set_style_bg_opa(tk, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(tk, C_FRAME, 0);
+  lv_obj_set_style_border_width(tk, 2, 0);
+  lv_obj_set_style_radius(tk, 0, 0);
+  lv_obj_set_style_pad_hor(tk, 8, 0);
+  lv_obj_set_style_pad_ver(tk, 2, 0);
+  lv_obj_remove_flag(tk, LV_OBJ_FLAG_SCROLLABLE);
+  lblNews = uiLabel(tk, "Haberler yükleniyor…", &noto20, C_CYAN);
+  lv_obj_set_width(lblNews, LV_SIZE_CONTENT);
+  lv_label_set_long_mode(lblNews, LV_LABEL_LONG_CLIP);
+  lv_obj_set_y(lblNews, 1);
   buildHome();
   buildLamps();
   buildFx();

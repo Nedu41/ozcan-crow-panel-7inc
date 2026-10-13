@@ -19,17 +19,12 @@
 #include "weather.h"
 #include "web_server.h"
 
-static bool hubUp = false;
+static bool hubUp = false;     // hizmetler baslatildi mi (hubStartTask tetiklendi)
+static volatile bool hubReady = false;  // hizmetler hazir: loop() onlari calistirabilir
 
-void hubOnWifiUp() {
-  if (hubUp) {
-    MDNS.end();
-    MDNS.begin("crowhub");  // ağ değişti: mDNS'i yeniden duyur
-    return;
-  }
-  hubUp = true;
+// Hizmetleri ayri gorevde baslat: NTP/mDNS/web kurulumu saniyelerce surebilir; LVGL dongusunde calisirsa ekran donuyordu
+static void hubStartTask(void*) {
   Serial.println("WiFi bağlandı. IP: " + WiFi.localIP().toString());
-
   if (MDNS.begin("crowhub")) Serial.println("mDNS: crowhub.local");
   ArduinoOTA.setHostname("crowhub");
   ArduinoOTA.begin();
@@ -39,17 +34,25 @@ void hubOnWifiUp() {
   xTaskCreatePinnedToCore(updateWeatherAndControlTask, "Weather", 8192, NULL, 1, NULL, 0);
   startDataTask();
   setupWebServer();
+  hubReady = true;
 
 #ifndef DEV_SCREENSHOT  // geliştirme imajında her yüklemede mesaj gitmesin
-  // Telegram başlangıç mesajı arayüzü bekletmesin (HTTPS, 10 sn'ye kadar sürebilir)
-  xTaskCreatePinnedToCore(
-      [](void*) {
-        vTaskDelay(pdMS_TO_TICKS(3000));
-        sendTelegramAlert("🚀 *CrowPanel HUB başlatıldı*\n📶 IP: " + WiFi.localIP().toString() + "\n📡 MAC: " + WiFi.macAddress());
-        vTaskDelete(nullptr);
-      },
-      "TgBoot", 8192, NULL, 1, NULL, 0);
+  vTaskDelay(pdMS_TO_TICKS(3000));
+  sendTelegramAlert("🚀 *CrowPanel HUB başlatıldı*
+📶 IP: " + WiFi.localIP().toString() + "
+📡 MAC: " + WiFi.macAddress());
 #endif
+  vTaskDelete(nullptr);
+}
+
+void hubOnWifiUp() {
+  if (hubUp) {
+    MDNS.end();
+    MDNS.begin("crowhub");  // ağ değişti: mDNS'i yeniden duyur
+    return;
+  }
+  hubUp = true;
+  xTaskCreatePinnedToCore(hubStartTask, "HubUp", 8192, NULL, 1, NULL, 0);
 }
 
 void setup() {
@@ -79,7 +82,7 @@ void setup() {
 
 void loop() {
   guiLoop();
-  if (hubUp) {
+  if (hubReady) {
     webLoop();
     ArduinoOTA.handle();
     mqttLoop();

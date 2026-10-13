@@ -11,10 +11,10 @@ extern "C" { extern const lv_font_t noto16, noto20, noto28; }
 #define C_FRAME    lv_color_hex(0x000000)
 #define C_TEXT     lv_color_hex(0xDADAE4)
 #define C_DIM      lv_color_hex(0x9A9AAE)
-#define C_CYAN     lv_color_hex(0x7FE0DC)
-#define C_ORANGE   lv_color_hex(0xFFB27A)
-#define C_GREEN    lv_color_hex(0x8FE0A0)
-#define C_RED      lv_color_hex(0xFF9A9A)
+#define C_CYAN     lv_color_hex(0xA070FF)  // canli mor (saat, sekmeler, birincil dugme, kayan yazi)
+#define C_ORANGE   lv_color_hex(0xFF4F9A)  // canli pembe
+#define C_GREEN    lv_color_hex(0x2BFF8A)
+#define C_RED      lv_color_hex(0xFF4040)
 #define C_ONPASTEL lv_color_hex(0x0E0E14)
 
 inline lv_obj_t* uiLabel(lv_obj_t* par, const char* t, const lv_font_t* f, lv_color_t c) {
@@ -37,7 +37,7 @@ inline lv_obj_t* uiBtn(lv_obj_t* par, const char* t, bool primary, lv_event_cb_t
   lv_obj_set_style_radius(b, 10, 0);
   lv_obj_set_style_bg_color(b, primary ? C_CYAN : C_BTN, 0);
   lv_obj_set_style_border_color(b, C_FRAME, 0);
-  lv_obj_set_style_border_width(b, 3, 0);
+  lv_obj_set_style_border_width(b, 2, 0);
   lv_obj_set_style_shadow_width(b, 0, 0);
   lv_obj_set_style_pad_hor(b, 18, 0);
   lv_obj_t* l = lv_label_create(b);
@@ -82,7 +82,7 @@ inline lv_obj_t* uiCard(lv_obj_t* par) {
   lv_obj_set_style_bg_color(c, C_CARD, 0);
   lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
   lv_obj_set_style_border_color(c, C_FRAME, 0);
-  lv_obj_set_style_border_width(c, 3, 0);
+  lv_obj_set_style_border_width(c, 2, 0);
   lv_obj_set_style_radius(c, 12, 0);
   lv_obj_set_style_pad_all(c, 12, 0);
   lv_obj_set_style_pad_gap(c, 8, 0);

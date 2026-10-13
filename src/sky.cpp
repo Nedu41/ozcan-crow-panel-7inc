@@ -857,7 +857,17 @@ static void stepLocked() {
   else if (wxDemoIdx >= 0) demoLabel = String("DEMO ") + WX_NAME[wxDemoIdx];
   else demoLabel = "";
 
-  for (int i = 0; i < SKY_W * SKY_H; i++) rgb[i] = S.pal[idx[i] & 15];
+  // canli renkler: palet girislerinin doygunlugu ve parlakligi artirilir (gri tonlar bozulmaz)
+  uint16_t bp[16];
+  for (int i = 0; i < 16; i++) {
+    uint16_t c = S.pal[i];
+    float r = ((c >> 11) & 31) * 8.2f, g = ((c >> 5) & 63) * 4.05f, b = (c & 31) * 8.2f;
+    float m = (r + g + b) / 3.0f;
+    r = m + (r - m) * 1.95f; g = m + (g - m) * 1.95f; b = m + (b - m) * 1.95f;
+    r *= 1.16f; g *= 1.16f; b *= 1.16f;
+    bp[i] = c565((uint8_t)constrain(r, 0.f, 255.f), (uint8_t)constrain(g, 0.f, 255.f), (uint8_t)constrain(b, 0.f, 255.f));
+  }
+  for (int i = 0; i < SKY_W * SKY_H; i++) rgb[i] = bp[idx[i] & 15];
 }
 
 void skyStep() {

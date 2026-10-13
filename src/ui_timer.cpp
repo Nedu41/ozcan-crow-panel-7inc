@@ -122,7 +122,7 @@ static lv_obj_t* mkRoller(lv_obj_t* par, int n) {
   lv_obj_set_style_bg_color(r, C_BTN, 0);
   lv_obj_set_style_text_color(r, C_TEXT, 0);
   lv_obj_set_style_border_color(r, C_FRAME, 0);
-  lv_obj_set_style_border_width(r, 3, 0);
+  lv_obj_set_style_border_width(r, 2, 0);
   lv_obj_set_style_bg_color(r, C_CYAN, LV_PART_SELECTED);
   lv_obj_set_style_text_color(r, C_ONPASTEL, LV_PART_SELECTED);
   return r;
