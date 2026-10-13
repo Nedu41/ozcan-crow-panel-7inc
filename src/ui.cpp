@@ -13,13 +13,13 @@
 #include "ui_hub.h"
 #include "wifi_nets.h"
 
-static uint8_t rot = 0;
+static const uint8_t rot = 0;  // yalniz yatay
 static int backlightPct = 100;
 static lv_display_t* disp;
 
 // ------------------------------------------------------------------ ekran / dokunmatik bağlantısı
 static void flushCb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
-  displayFlush(a, (const uint16_t*)px, lv_display_flush_is_last(d));
+  displayFlush(a, px, lv_display_flush_is_last(d));
   lv_display_flush_ready(d);
 }
 
@@ -51,49 +51,51 @@ void uiSetBacklight(int pct) {
   p.end();
 }
 int uiGetBacklight() { return backlightPct; }
-uint8_t uiRotation() { return rot; }
-bool uiIsLandscape() { return displayW() > displayH(); }
-
-void uiRotate() {
-  rot = (rot + 1) & 3;
-  displaySetRotation(rot);
-  lv_display_set_resolution(disp, displayW(), displayH());
-  Preferences p;
-  p.begin("ui", false);
-  p.putUChar("rot", rot);
-  p.end();
-  hubUiOnRotate();
-  lv_obj_invalidate(lv_screen_active());
-}
+uint8_t uiRotation() { return 0; }
+bool uiIsLandscape() { return true; }
+void uiRotate() {}  // dikey mod kaldirildi (direct mod yalniz yatay)
 
 void guiInit() {
   Preferences p;
   p.begin("ui", false);
-  rot = p.getUChar("rot", 0) & 3;
   backlightPct = p.getUChar("bl", 100);
   p.end();
 
   boardPowerSeq();
-  displayInit(rot);
+  displayInit();
   ledcAttach(PIN_BL, 5000, 8);
   applyBacklight();
 
   lv_init();
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
-  const uint32_t bufPx = 800 * 40;
-  void* b1 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
-  void* b2 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
-  disp = lv_display_create(displayW(), displayH());
+  // Elecrow yontemi: LVGL dogrudan surucunun iki tam ekran tamponuna cizer (direct mod); kopyalama yok.
+  disp = lv_display_create(800, 480);
   lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
   lv_display_set_flush_cb(disp, flushCb);
-  lv_display_set_buffers(disp, b1, b2, bufPx * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
+  lv_display_set_buffers(disp, displayBuffer(0), displayBuffer(1), 800 * 480 * 2, LV_DISPLAY_RENDER_MODE_DIRECT);
 
   lv_indev_t* in = lv_indev_create();
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, touchCb);
 }
 
-void guiLoop() { lv_timer_handler(); }
+// Performans sayaci (/api/sistem): LVGL isleyicisinin sure ve kare istatistigi
+volatile uint32_t perfAvgUs = 0, perfMaxUs = 0, perfCalls = 0, perfBusy = 0;  // son 2 sn penceresi
+void guiLoop() {
+  static uint32_t winStart = 0, sum = 0, mx = 0, n = 0, busy = 0;
+  uint32_t t0 = micros();
+  lv_timer_handler();
+  uint32_t d = micros() - t0;
+  if (d > 3000) { busy++; sum += d; n++; if (d > mx) mx = d; }  // 3 ms ustu: gercek bir cizim karesi
+  if (millis() - winStart >= 2000) {
+    perfAvgUs = n ? sum / n : 0;
+    perfMaxUs = mx;
+    perfCalls = n;
+    perfBusy = busy;
+    winStart = millis();
+    sum = mx = n = busy = 0;
+  }
+}
 
 // ------------------------------------------------------------------ ekranlar
 static lv_obj_t *scrList, *scrPass, *scrBusy, *scrHome;

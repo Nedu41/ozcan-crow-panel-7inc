@@ -640,7 +640,7 @@ void setupWebServer() {
   // YENİ: ESP01'lere giden blocking HTTP çağrılarını (röle kontrolü, mDNS
   // tarama doğrulaması) paylaşılan AsyncTCP task'ından ayıran worker
   proxyQueue = xQueueCreate(10, sizeof(ProxyJob));
-  xTaskCreatePinnedToCore(proxyWorkerTask, "ProxyWorker", 8192, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(proxyWorkerTask, "ProxyWorker", 8192, NULL, 1, NULL, 0);  // cekirdek 1 yalniz LVGL + ekran DMA kesmesi icin
 
   // WebSocket - buton tıklaması artık HTTP proxy yerine WS "control" mesajı
   // gönderiyor, durum güncellemeleri de 2sn'lik polling yerine push ediliyor

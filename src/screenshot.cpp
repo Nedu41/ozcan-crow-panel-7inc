@@ -8,6 +8,7 @@
 extern volatile int devTabReq;     // ui_hub.cpp
 extern volatile bool devRotReq;
 extern volatile int devTimerReq;
+extern volatile int devSkyMode;
 
 static uint8_t rowBuf[800 * 3 + 4];
 static int curRow = -1;
@@ -24,12 +25,16 @@ void devScreenshotRoute(AsyncWebServer& server) {
     devTimerReq = r->hasParam("i") ? r->getParam("i")->value().toInt() : 0;
     r->send(200, "text/plain", "ok");
   });
+  server.on("/dev/sky", HTTP_GET, [](AsyncWebServerRequest* r) {
+    devSkyMode = r->hasParam("m") ? r->getParam("m")->value().toInt() : 0;
+    r->send(200, "text/plain", "ok");
+  });
   server.on("/dev/rot", HTTP_GET, [](AsyncWebServerRequest* r) {
     devRotReq = true;
     r->send(200, "text/plain", "ok");
   });
   server.on("/screen.bmp", HTTP_GET, [](AsyncWebServerRequest* req) {
-    const int W = displayW(), H = displayH();
+    const int W = 800, H = 480;
     const size_t rowBytes = (W * 3 + 3) & ~3u;
     const size_t total = 54 + rowBytes * H;
     curRow = -1;

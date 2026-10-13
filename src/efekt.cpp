@@ -245,7 +245,7 @@ static void drawFrame() {
   const int w = KW, h = KH;
   memcpy(fbuf, fback, KW * KW * 2);  // UDP yazarken cizmeyelim
   uint16_t* hid = displayHidden();
-  bool flip = uiRotation() == 2;
+  const bool flip = false;
   for (int y = 0; y < h; y++) {
     const uint16_t* src = fbuf + y * w;
     uint16_t* row = blk;

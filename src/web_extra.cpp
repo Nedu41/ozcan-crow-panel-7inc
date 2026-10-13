@@ -12,7 +12,8 @@
 #include "ui_common.h"
 
 extern AsyncWebServer server;
-extern volatile bool devRotReq;  // ui_hub.cpp: ekran yönünü LVGL döngüsünde değiştirir
+extern volatile bool devRotReq;
+extern volatile uint32_t perfAvgUs, perfMaxUs, perfCalls;
 
 void webExtraRoutes() {
   // Canli gokyuzu karesi (8 bit paletli BMP, ~38 KB); web Ana sayfa ~1 sn'de bir ceker
@@ -58,6 +59,9 @@ void webExtraRoutes() {
     d["ip"] = WiFi.localIP().toString();
     d["up"] = millis() / 1000;
     d["heap"] = ESP.getFreeHeap();
+    d["lv_kare_2sn"] = (uint32_t)perfCalls;       // son 2 sn'de 3 ms ustu cizim karesi sayisi
+    d["lv_ort_ms"] = perfAvgUs / 1000.0f;
+    d["lv_maks_ms"] = perfMaxUs / 1000.0f;
     String o;
     serializeJson(d, o);
     r->send(200, "application/json", o);
