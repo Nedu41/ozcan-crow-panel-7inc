@@ -148,7 +148,7 @@ static bool followIpChanges() {
   for (int i = 0; i < n; i++) {
     String mac = MDNS.hasTxt(i, "mac") ? normMac(MDNS.txt(i, "mac")) : "";
     if (!mac.length()) continue;
-    String newIp = MDNS.IP(i).toString();
+    String newIp = MDNS.address(i).toString();
     for (JsonObject device : doc.as<JsonArray>()) {
       if ((device["mac"] | String("")) == mac && (device["ip"] | String("")) != newIp) {
         Serial.printf("[Cihaz] %s IP degisti: %s -> %s (MAC %s)\n",

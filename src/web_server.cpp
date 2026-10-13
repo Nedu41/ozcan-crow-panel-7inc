@@ -518,7 +518,7 @@ void proxyWorkerTask(void *pvParameters) {
       for (int round = 0; round < 3; round++) {
         int n = MDNS.queryService("http", "tcp");
         for (int i = 0; i < n; i++) {
-          IPAddress ip = MDNS.IP(i);
+          IPAddress ip = MDNS.address(i);
           bool dup = false;
           for (auto& f : found) if (f.first == ip) { dup = true; break; }
           if (!dup) found.push_back({ip, MDNS.hostname(i)});

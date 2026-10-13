@@ -181,7 +181,7 @@ static void tickHome() {
   if (getLocalTime(&t, 0)) {
     snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
     uiSetText(lblTime, buf);
-    snprintf(buf, sizeof(buf), "%d %s %d\n%s", t.tm_mday, ay[t.tm_mon], t.tm_year + 1900, gun[t.tm_wday]);
+    snprintf(buf, sizeof(buf), "%d %s %d\n%s   v%s", t.tm_mday, ay[t.tm_mon], t.tm_year + 1900, gun[t.tm_wday], FW_VERSION);
     uiSetText(lblDate, buf);
   }
 
