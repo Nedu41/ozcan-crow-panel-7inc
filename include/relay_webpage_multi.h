@@ -2243,6 +2243,7 @@ function renderSistem() {
         <button class="btn" onclick="route('/wifi')">WiFi ağları</button>
         <button class="btn" onclick="route('/weather')">Hava konumu</button>
         <button class="btn" onclick="route('/efekt')">Yapay zeka anahtarı</button>
+        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#a070ff">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
         <button class="btn warning" onclick="restartHub()">Yeniden başlat</button>
     </div>`;
     fetch("/api/sistem").then(r => r.json()).then(j => {

@@ -55,7 +55,7 @@ static void setDot(lv_obj_t* d, bool ok) {
 }
 
 // ------------------------------------------------------------------ ANA
-static lv_obj_t *lblLoc, *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
+static lv_obj_t *lblHumT, *lblHum, *lblLoc, *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
 static lv_obj_t *skyCard, *skyImg, *boxT, *boxW, *boxF, *lblTempC, *lblWindT, *lblWindDir, *lblWindVal, *lblWindU;
 static const int IC_W = 26, IC_H = 22;
 static lv_obj_t *fcCol[7], *fcDay[7], *fcTmp[7], *fcIcon[7];
@@ -137,6 +137,8 @@ static void buildHome() {
   lblWxDesc = uiLabel(boxT, "Hava durumu yükleniyor…", &noto28, C_TEXT);
   lblTemp = uiLabel(boxT, "--", &dseg52, C_ORANGE);
   lblTempC = uiLabel(boxT, "°C", &noto28, C_ORANGE);
+  lblHumT = uiLabel(boxT, "NEM", &noto16, C_DIM);       // sicakligin yaninda nem
+  lblHum = uiLabel(boxT, "--", &noto28, C_CYAN);
   boxW = box(C_CYAN);
   lblWindT = uiLabel(boxW, "RÜZGAR", &noto20, C_DIM);
   lblWindDir = uiLabel(boxW, "", &noto28, C_TEXT);
@@ -242,6 +244,7 @@ static void tickHome() {
     float wind = CURRENT_WEATHER_DOC["wind_speed"] | 0.0f;
     String wdir = CURRENT_WEATHER_DOC["wind_direction"] | "";
     String cityFull = CURRENT_WEATHER_DOC["city_name"] | "";
+    int hum = CURRENT_WEATHER_DOC["humidity"] | -1;
     int code = CURRENT_WEATHER_DOC["weathercode"] | -1;
     int n = 0, c[7], mx[7], mn[7];
     for (JsonArray d : CURRENT_WEATHER_DOC["fc"].as<JsonArray>()) {
@@ -257,6 +260,7 @@ static void tickHome() {
     if (desc == "OK") {
       snprintf(buf, sizeof(buf), "%.0f", temp);
       uiSetText(lblTemp, buf);
+      if (hum >= 0) { snprintf(buf, sizeof(buf), "%%%d", hum); uiSetText(lblHum, buf); }
       uiSetText(lblWxDesc, wmoText(code)[0] ? wmoText(code) : "Hava durumu");
       uiSetText(lblWindDir, wdir.c_str());
       snprintf(buf, sizeof(buf), "%.1f", wind);
@@ -650,6 +654,37 @@ static void onTgTok(const char* t) {
 static void onSetTg(lv_event_t*) { uiPrompt("Telegram bot token", "", false, onTgTok); }
 
 static void onAiKey(const char* t) { efektAnahtar(String(t)); }
+// Anahtar alma baglantisi: ekranda bag acilamaz, QR ile telefondan acilir
+static lv_obj_t* qrOv;
+static void onQrClose(lv_event_t*) {
+  if (qrOv) lv_obj_delete_async(qrOv);
+  qrOv = nullptr;
+}
+static void onAiQr(lv_event_t*) {
+  if (qrOv) return;
+  static const char* URL = "https://aistudio.google.com/apikey";
+  qrOv = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(qrOv, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_color(qrOv, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(qrOv, LV_OPA_90, 0);
+  lv_obj_set_style_border_width(qrOv, 0, 0);
+  lv_obj_set_style_radius(qrOv, 0, 0);
+  lv_obj_set_flex_flow(qrOv, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(qrOv, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_gap(qrOv, 6, 0);
+  lv_obj_remove_flag(qrOv, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* qr = lv_qrcode_create(qrOv);
+  lv_qrcode_set_size(qr, 200);
+  lv_qrcode_set_dark_color(qr, lv_color_black());
+  lv_qrcode_set_light_color(qr, lv_color_white());
+  lv_qrcode_update(qr, URL, strlen(URL));
+  lv_obj_set_style_border_color(qr, lv_color_white(), 0);  // sessiz bolge (QR okunabilsin)
+  lv_obj_set_style_border_width(qr, 8, 0);
+  uiLabel(qrOv, "Ücretsiz Gemini anahtarı: telefonla okutun", &noto20, C_TEXT);
+  uiLabel(qrOv, "aistudio.google.com/apikey", &noto20, C_CYAN);
+  uiBtn(qrOv, "Kapat", true, onQrClose, LV_SIZE_CONTENT, 44);
+}
+
 static void onSetAi(lv_event_t*) {
   uiPrompt("Gemini API anahtarı (alma: aistudio.google.com/apikey)", "", false, onAiKey);
 }
@@ -780,6 +815,7 @@ static void buildSet() {
   uiBtn(r, "Hava konumu", false, onSetLoc);
   uiBtn(r, "Telegram", false, onSetTg);
   uiBtn(r, "Yapay zeka anahtarı", false, onSetAi);
+  uiBtn(r, "Anahtar al (QR)", false, onAiQr);
   uiBtn(r, "Yeniden başlat", false, onSetRestart);
   uiBtn(r, "WiFi'leri sil", false, onSetWipe);
 }
@@ -831,6 +867,8 @@ static void layoutSky(int w) {
   lv_obj_set_pos(lblWxDesc, P(6), P(2));
   lv_obj_set_pos(lblTemp, P(4), P(22));
   lv_obj_align_to(lblTempC, lblTemp, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -6);
+  lv_obj_align(lblHumT, LV_ALIGN_TOP_RIGHT, -P(6), P(25));
+  lv_obj_align(lblHum, LV_ALIGN_TOP_RIGHT, -P(6), P(33));
   lv_obj_set_pos(lblWindT, P(6), P(2));
   lv_obj_align(lblWindDir, LV_ALIGN_TOP_RIGHT, -P(6), P(2));
   lv_obj_set_pos(lblWindVal, P(4), P(22));
