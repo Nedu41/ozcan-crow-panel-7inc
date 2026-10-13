@@ -1,5 +1,5 @@
 """PlatformIO extra_script: derlenen imajlara kullanici adi / klasor yollari gomulmesin.
-ESP32 derlemelerinde __FILE__ (ESP_LOG, assert) mutlak yol tasir: "C:/Users/<ad>/.platformio/...".
+ESP32 derlemelerinde __FILE__ (ESP_LOG, assert) mutlak yol tasir: "<surucu>:/<kullanici-klasoru>/.platformio/...".
 Bu betik yollari nötr kokler ile degistirir (-ffile-prefix-map). Yolu koda YAZMAZ, derleme sirasinda hesaplar.
 Kullanim: platformio.ini -> extra_scripts = pre:tools/gizlilik.py   (relative yol proje kokune gore)
 """

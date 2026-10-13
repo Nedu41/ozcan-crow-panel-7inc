@@ -17,7 +17,7 @@ import sys
 KOK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEDEF = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(os.path.dirname(KOK), 'crowpanel-hub-public')
 
-DISLA = ('CLAUDE.md', '.claude/')           # ozel devir notlari yayina girmez
+DISLA = ('CLAUDE.md', '.claude/', 'tools/yayin_hazirla.py')  # ozel devir notlari ve bu betik (aranan kaliplari icerir) yayina girmez
 IKILI = ('.bin', '.jpeg', '.jpg', '.png', '.webp', '.c')  # .c: font tablolari (metin ama buyuk, taranir)
 DEGISTIR = [  # (regex, yerine) — yalnizca metin dosyalari
     (r"Özcan abinin", "teslim alanın"), (r"Özcan abiye", "teslim alana"), (r"Özcan abi", "teslim alan kişi"),
