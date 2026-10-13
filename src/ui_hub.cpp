@@ -54,7 +54,7 @@ static void setDot(lv_obj_t* d, bool ok) {
 }
 
 // ------------------------------------------------------------------ ANA
-static lv_obj_t *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
+static lv_obj_t *lblLoc, *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
 static lv_obj_t *skyCard, *skyImg, *boxT, *boxW, *boxF, *lblTempC, *lblWindT, *lblWindDir, *lblWindVal, *lblWindU;
 static const int IC_W = 26, IC_H = 22;
 // Hava karti paleti (ev-lamba ekranindan farkli, canli): pembe / mor / nane + sari "bugun"; koyu yari saydam zemin
@@ -95,6 +95,10 @@ static void buildHome() {
   lv_obj_t* r = uiRow(tabHome);
   lv_obj_set_flex_align(r, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lblTime = uiLabel(r, "--:--", &lv_font_montserrat_48, C_CYAN);
+  lblLoc = uiLabel(r, "", &noto20, C_TEXT);  // saatin yaninda ilce / mahalle
+  lv_obj_set_flex_grow(lblLoc, 1);
+  lv_label_set_long_mode(lblLoc, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(lblLoc, LV_TEXT_ALIGN_CENTER, 0);
   lblDate = uiLabel(r, "", &noto20, C_TEXT);
   lv_obj_set_style_text_align(lblDate, LV_TEXT_ALIGN_RIGHT, 0);
 
@@ -106,10 +110,10 @@ static void buildHome() {
   lv_obj_set_width(skyCard, LV_PCT(100));
   lv_obj_set_height(skyCard, 380);
   lv_obj_set_style_pad_all(skyCard, 0, 0);
-  lv_obj_set_style_radius(skyCard, 12, 0);
+  lv_obj_set_style_radius(skyCard, 0, 0);
   lv_obj_set_style_border_color(skyCard, C_FRAME, 0);
   lv_obj_set_style_border_width(skyCard, 3, 0);
-  lv_obj_set_style_clip_corner(skyCard, true, 0);
+  lv_obj_set_style_clip_corner(skyCard, false, 0);  // true iken kart maskeli ayri katmanda cizilir: kare basina ~500 ms yavaslik
   lv_obj_remove_flag(skyCard, LV_OBJ_FLAG_SCROLLABLE);
   skyDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
   skyDsc.header.cf = LV_COLOR_FORMAT_RGB565;
@@ -125,8 +129,7 @@ static void buildHome() {
 
   auto box = [&](lv_color_t col) {
     lv_obj_t* o = lv_obj_create(skyCard);
-    lv_obj_set_style_bg_color(o, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(o, LV_OPA_30, 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);  // cerceve ici bos (ev-lamba ekraniyla ayni; ayrica cizimi hafifletir)
     lv_obj_set_style_border_color(o, col, 0);
     lv_obj_set_style_border_width(o, 2, 0);
     lv_obj_set_style_pad_all(o, 0, 0);
@@ -173,6 +176,65 @@ static void buildHome() {
 
 }
 
+// Turkce buyuk harf (UTF-8): i->İ, ı->I, ş->Ş, ğ->Ğ, ü->Ü, ö->Ö, ç->Ç
+static String trUpper(const String& in) {
+  String o;
+  const uint8_t* p = (const uint8_t*)in.c_str();
+  while (*p) {
+    uint8_t c = *p;
+    if (c == 'i') { o += "Ä°"; p++; }                                  // İ
+    else if (c >= 'a' && c <= 'z') { o += (char)(c - 32); p++; }
+    else if (c == 0xC3 && p[1]) {
+      uint8_t d = p[1];
+      o += (char)0xC3;
+      o += (char)((d == 0xA7 || d == 0xB6 || d == 0xBC) ? d - 0x20 : d);        // ç ö ü -> Ç Ö Ü
+      p += 2;
+    } else if (c == 0xC4 && p[1]) {
+      uint8_t d = p[1];
+      if (d == 0xB1) { o += 'I'; }                                               // ı -> I
+      else { o += (char)0xC4; o += (char)(d == 0x9F ? 0x9E : d); }               // ğ -> Ğ
+      p += 2;
+    } else if (c == 0xC5 && p[1]) {
+      uint8_t d = p[1];
+      o += (char)0xC5;
+      o += (char)(d == 0x9F ? 0x9E : d);                                         // ş -> Ş
+      p += 2;
+    } else { o += (char)c; p++; }
+  }
+  return o;
+}
+
+// ---- alt kayan yazi: kendi animasyonumuz (LVGL dairesel kaydirma uzun metinde cok hizli kaliyordu)
+static String tickItems[24];
+static int tickN = 0, tickStart = 0;
+static const int TICK_SPEED = 90;  // px/sn
+static void tickerNext(lv_anim_t*) {
+  if (!lblNews || tickN == 0) return;
+  String t;
+  int used = 0;
+  while (used < tickN) {
+    String cand = t + tickItems[(tickStart + used) % tickN] + "   +++   ";
+    if (used > 0 && lv_text_get_width(cand.c_str(), cand.length(), &noto20, 0) > 6500) break;  // LVGL koordinat siniri ~8191
+    t = cand;
+    used++;
+  }
+  tickStart = (tickStart + used) % tickN;
+  lv_anim_delete(lblNews, nullptr);
+  lv_label_set_text(lblNews, t.c_str());
+  lv_obj_update_layout(lblNews);
+  int tw = lv_obj_get_width(lblNews);
+  int cw = lv_obj_get_content_width(lv_obj_get_parent(lblNews));
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, lblNews);
+  lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+  lv_anim_set_values(&a, cw, -tw);
+  lv_anim_set_duration(&a, (uint32_t)(cw + tw) * 1000UL / TICK_SPEED);
+  lv_anim_set_path_cb(&a, lv_anim_path_linear);
+  lv_anim_set_completed_cb(&a, tickerNext);
+  lv_anim_start(&a);
+}
+
 static void tickHome() {
   static const char* gun[] = {"Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"};
   static const char* ay[] = {"Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"};
@@ -188,6 +250,8 @@ static void tickHome() {
   // hava
   if (takeMutex(weatherMutex)) {
     String desc = CURRENT_WEATHER_DOC["description"] | "";
+    String cityFull = CURRENT_WEATHER_DOC["city_name"] | "";
+    String nbh = WEATHER_CONFIG_DOC["neighbourhood"] | "", dist = WEATHER_CONFIG_DOC["district"] | "";
     float temp = CURRENT_WEATHER_DOC["temp"] | 0.0f;
     float wind = CURRENT_WEATHER_DOC["wind_speed"] | 0.0f;
     String wdir = CURRENT_WEATHER_DOC["wind_direction"] | "";
@@ -198,6 +262,15 @@ static void tickHome() {
       c[n] = d[0] | -1; mx[n] = d[1] | 0; mn[n] = d[2] | 0; n++;
     }
     xSemaphoreGive(weatherMutex);
+    {  // saatin yaninda mahalle + ilce (ayarlardan); yoksa konum adinin ilk iki parcasi
+      nbh.replace(" Mahallesi", "");
+      String loc = nbh.length() && dist.length() ? nbh + ", " + dist : nbh.length() ? nbh : dist;
+      if (!loc.length()) {
+        int c1 = cityFull.indexOf(','), c2 = c1 < 0 ? -1 : cityFull.indexOf(',', c1 + 1);
+        loc = c2 > 0 ? cityFull.substring(0, c2) : cityFull;
+      }
+      uiSetText(lblLoc, trUpper(loc).c_str());
+    }
     if (desc == "OK") {
       snprintf(buf, sizeof(buf), "%.0f", temp);
       uiSetText(lblTemp, buf);
@@ -254,15 +327,24 @@ static void tickHome() {
     }
   }
 
-  // haber: tam genislik kayan yazi (tüm başlıklar, kesintisiz)
+  // haber: alttaki kayan yazi (parti parti, sabit hiz)
   String news;
   if (takeMutex(newsMutex)) { news = NEWS_TICKER_TEXT; xSemaphoreGive(newsMutex); }
   if (news.length() && news != lastNews && lblNews) {
     lastNews = news;
-    lv_label_set_text(lblNews, news.c_str());
-    lv_obj_update_layout(lblNews);
-    int wpx = lv_text_get_width(news.c_str(), news.length(), &noto20, 0) + 200;  // dongu boslugu
-    lv_obj_set_style_anim_duration(lblNews, (uint32_t)wpx * 1000UL / 110, 0);   // ~110 px/sn
+    static const char* SEP = "     +++     ";
+    tickN = 0;
+    int start = 0;
+    while (start <= (int)news.length() && tickN < 24) {
+      int end = news.indexOf(SEP, start);
+      String one = end < 0 ? news.substring(start) : news.substring(start, end);
+      one.trim();
+      if (one.length()) tickItems[tickN++] = one;
+      if (end < 0) break;
+      start = end + strlen(SEP);
+    }
+    tickStart = 0;
+    tickerNext(nullptr);
   }
 }
 
@@ -536,7 +618,6 @@ static void tickFx() {
 static lv_obj_t *setInfo, *blLbl;
 
 static void onSetWifi(lv_event_t*) { uiShowWifiSetup(); }
-static void onSetRot(lv_event_t*) { uiRotate(); }
 static void onSetRestart(lv_event_t*) { ESP.restart(); }
 static void doWipeWifi() {
   wifiNetsClear();
@@ -615,7 +696,6 @@ static void buildSet() {
   lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
   uiBtn(r, "WiFi ayarı", false, onSetWifi);
-  uiBtn(r, "Ekranı döndür", false, onSetRot);
   uiBtn(r, "Hava konumu", false, onSetLoc);
   uiBtn(r, "Telegram", false, onSetTg);
   uiBtn(r, "Yapay zeka anahtarı", false, onSetAi);
@@ -663,8 +743,8 @@ static void layoutSky(int w) {
     lv_obj_set_size(o, P(ww), P(hh));
     lv_obj_set_style_radius(o, P(7), 0);
   };
-  place(boxT, 6, 6, 150, 80);
-  place(boxW, 164, 6, 150, 80);
+  place(boxT, 6, 6, 150, 62);
+  place(boxW, 164, 6, 150, 62);
   place(boxF, 6, 134, 308, 46);
   lv_obj_set_pos(lblWxDesc, P(6), P(2));
   lv_obj_set_pos(lblTemp, P(4), P(26));
@@ -738,24 +818,29 @@ static void drawMiniIcon(lv_obj_t* cv, int code, bool past) {
 }
 
 // Gokyuzu sahnesi: Ana sekmesi acikken ~10 kare/sn; kart genisligine gore olcek
+volatile int devSkyMode = 0;  // test: 0 normal, 1 resim gizli, 2 kutular gizli, 3 tahmin seridi gizli
 static void skyTick(lv_timer_t*) {
-  if (!tv || lv_tabview_get_tab_active(tv) != 0 || !skyImg) return;
+  bool on = tv && lv_tabview_get_tab_active(tv) == 0 && skyImg;
+  skyWant(on);
+  if (!on) return;
   int w = lv_obj_get_width(skyCard);
   if (w != skyCardW && w > 40) {
     skyCardW = w;
     layoutSky(w);
   }
-  // Sahne 160 ms'de bir ilerler; ekrana 4 yatay bant sirayla yazilir (40 ms'de bir bant). Boylece kare basina
-  // PSRAM yazimi kucuk kalir (titreme/cizgi ve alt yazi atlamasi azalir).
-  static int band = 0;
-  if (band == 0) skyStep();
-  if (lv_image_get_scale(skyImg) == 256) {
-    lv_area_t a = {0, band * (SKY_BH / 4), SKY_BW - 1, (band + 1) * (SKY_BH / 4) - 1};
-    lv_obj_invalidate_area(skyImg, &a);
-  } else {
-    if (band == 0) lv_obj_invalidate(skyImg);
+  {
+    int m = devSkyMode;
+    auto setHide = [](lv_obj_t* o, bool h) { if (h) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); };
+    setHide(skyImg, m == 1);
+    setHide(boxT, m == 2); setHide(boxW, m == 2);
+    setHide(boxF, m == 2 || m == 3);
   }
-  band = (band + 1) & 3;
+  static uint32_t seen = 0;
+  uint32_t seq = skyFrameSeq();
+  if (seq == seen) return;  // yeni kare yok
+  seen = seq;
+  skyDsc.data = (const uint8_t*)skyRGB565();  // gorev yeni kareyi on tampona koydu
+  lv_obj_invalidate(skyImg);
 }
 
 static void tick(lv_timer_t*) {
@@ -830,16 +915,17 @@ lv_obj_t* hubUiCreate() {
   lv_obj_set_style_pad_ver(tk, 2, 0);
   lv_obj_remove_flag(tk, LV_OBJ_FLAG_SCROLLABLE);
   lblNews = uiLabel(tk, "Haberler yükleniyor…", &noto20, C_CYAN);
-  lv_obj_set_width(lblNews, LV_PCT(100));
-  lv_label_set_long_mode(lblNews, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_align(lblNews, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_remove_flag(tk, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_width(lblNews, LV_SIZE_CONTENT);
+  lv_label_set_long_mode(lblNews, LV_LABEL_LONG_CLIP);
+  lv_obj_set_y(lblNews, 3);
   buildHome();
   buildLamps();
   buildFx();
   buildSet();
   placeTabs();
   lv_timer_create(tick, 500, nullptr);
-  lv_timer_create(skyTick, 40, nullptr);
+  lv_timer_create(skyTick, 16, nullptr);
   efektStart();
   return scr;
 }

@@ -9,6 +9,8 @@ void skyStep();                         // hava+saate gore bir kare ilerlet ve c
 void skyStepIfStale(uint32_t maxAgeMs); // web icin: kare eskiyse yenile
 constexpr int SKY_BW = SKY_W * 2, SKY_BH = SKY_H * 2;
 const uint16_t* skyRGB565();            // SKY_BW*SKY_BH RGB565 (2x bilinear buyutulmus, LVGL yerel bayt sirasi)
+uint32_t skyFrameSeq();                 // her yeni kare icin artar
+void skyWant(bool on);                  // Ana sekmesi acikken true: uretim gorevi calisir
 String skyDemoLabel();                  // demo acikken "DEMO 13:20" gibi, degilse bos
 void startSkyDemo();                    // 24 saat ~2 dk
 void startWeatherDemo();                // tum hava tipleri 8'er sn

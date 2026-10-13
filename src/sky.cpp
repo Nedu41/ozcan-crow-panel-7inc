@@ -11,7 +11,10 @@
 
 static uint8_t* idx = nullptr;          // SKY_W*SKY_H palet indeksi (PSRAM)
 static uint16_t* rgb = nullptr;         // SKY_W*SKY_H RGB565 (palet uygulanmis)
-static uint16_t* big = nullptr;         // SKY_BW*SKY_BH: rgb'nin 2x bilinear buyutulmusu (LVGL icin)
+static uint16_t* bigBuf[2] = {nullptr, nullptr};  // SKY_BW*SKY_BH: rgb'nin 2x bilinear buyutulmusu (LVGL icin), on/arka
+static volatile int frontIdx = 0;
+static volatile uint32_t frameSeq = 0;
+static volatile bool wantFrames = false;  // arayuz Ana sekmesindeyken gorev kare uretir
 static SemaphoreHandle_t smtx;
 
 static inline uint16_t c565(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
@@ -804,12 +807,15 @@ static uint32_t lastStep = 0;
 
 String skyDemoLabel() { return demoLabel; }
 
+static void skyTask(void*);
 void skyInit() {
   if (idx) return;
   idx = (uint8_t*)heap_caps_calloc(SKY_W * SKY_H, 1, MALLOC_CAP_SPIRAM);
   rgb = (uint16_t*)heap_caps_calloc(SKY_W * SKY_H, 2, MALLOC_CAP_SPIRAM);
-  big = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
+  bigBuf[0] = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
+  bigBuf[1] = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
   smtx = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore(skyTask, "Sky", 6144, nullptr, 1, nullptr, 0);
 }
 
 static void stepLocked() {
@@ -860,12 +866,13 @@ static void stepLocked() {
   else demoLabel = "";
 
   for (int i = 0; i < SKY_W * SKY_H; i++) rgb[i] = S.pal[idx[i] & 15];
+  uint16_t* back = bigBuf[frontIdx ^ 1];
   // 2x bilinear: her kaynak piksel 2x2 hedef; yari konumlar komsu ortalamasi (RGB565 bit hilesi)
   auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
   for (int y = 0; y < SKY_H; y++) {
     const uint16_t* r0 = rgb + y * SKY_W;
     const uint16_t* r1 = y + 1 < SKY_H ? r0 + SKY_W : r0;
-    uint16_t* d0 = big + (size_t)(2 * y) * SKY_BW;
+    uint16_t* d0 = back + (size_t)(2 * y) * SKY_BW;
     uint16_t* d1 = d0 + SKY_BW;
     for (int x = 0; x < SKY_W; x++) {
       int xn = x + 1 < SKY_W ? x + 1 : x;
@@ -891,7 +898,27 @@ void skyStepIfStale(uint32_t maxAgeMs) {
   if (millis() - lastStep > maxAgeMs) skyStep();
 }
 
-const uint16_t* skyRGB565() { return big; }
+const uint16_t* skyRGB565() { return bigBuf[frontIdx]; }
+uint32_t skyFrameSeq() { return frameSeq; }
+void skyWant(bool on) { wantFrames = on; }
+
+static void skyTask(void*) {
+  uint32_t next = millis();
+  for (;;) {
+    if (wantFrames) {
+      skyStep();                 // arka tampona yazar
+      frontIdx ^= 1;             // sonra on tampon olur (LVGL bir sonraki karede bunu okur)
+      frameSeq++;
+      next += 65;                // ~15 kare/sn (ekran 30,8 Hz: 2 vsync'te bir)
+      int32_t wait = (int32_t)(next - millis());
+      if (wait < 0) { next = millis(); wait = 1; }
+      vTaskDelay(pdMS_TO_TICKS(wait));
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(200));
+      next = millis();
+    }
+  }
+}
 
 // 8 bit paletli BMP (web): 54 + 1024 palet + SKY_W*SKY_H; satirlar alttan uste, 320 baytlik satir (4'un kati)
 size_t skyBmpSize() { return 54 + 1024 + (size_t)SKY_W * SKY_H; }

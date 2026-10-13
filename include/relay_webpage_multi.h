@@ -2156,7 +2156,7 @@ function drawMini(g, code, past) {
 function skyLoop() {
     const im = document.getElementById("hSky");
     if (location.pathname !== "/" || !im) { setTimeout(skyLoop, 1000); return; }
-    const next = () => setTimeout(skyLoop, 600);
+    const next = () => setTimeout(skyLoop, 80);
     im.onload = next; im.onerror = () => setTimeout(skyLoop, 3000);
     im.src = "/api/sky.bmp?t=" + Date.now();
 }
@@ -2243,7 +2243,6 @@ function renderSistem() {
     <div class="settings-container"><h3>⚙️ Sistem</h3><div id="sysInfo">…</div></div>
     <div class="settings-container"><h3>Ekran</h3>
         <label>Parlaklık <span id="blL"></span></label><input type="range" id="blS" min="10" max="100" style="width:100%" oninput="sysBl()">
-        <button class="btn" onclick="fetch('/api/sistem/rot')">Ekranı döndür</button>
     </div>
     <div class="settings-container"><h3>Telegram</h3>
         <div id="tgState" style="margin-bottom:6px"></div>
