@@ -7,6 +7,10 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
+#include <driver/gpio.h>
+#include <esp32s3/rom/cache.h>
+#include <soc/io_mux_reg.h>
+
 #include "board.h"
 #include "ui_common.h"
 
@@ -198,20 +202,78 @@ static bool shown = false;
 static uint32_t shownCnt = 0, openedAt = 0, drawAfter = 0;
 static uint16_t* blk;  // 5 satırlık blok (internal RAM)
 
+// Çift tampon (yırtılma/akma yok): sürücü (LovyanGFX Bus_RGB) tek framebuffer'ı özel DMA zinciriyle tarar;
+// yeni kareyi gizli ikinci tampona yazıp vsync anında DMA işaretçilerini ona çeviriyoruz.
+// Yalnızca yatay yönde (rot 0/2); dikeyde eski yol (doğrudan LCD'ye yaz, akabilir).
+static const size_t FB_BYTES = 800 * 480 * 2, DMA_CHUNK = 4096 - 64;
+static uint8_t *fbA = nullptr, *fbB = nullptr, *fbCur = nullptr;  // A: sürücünün asıl tamponu
+static int fbSkip = 0, vsyncIdle = 0, vsyncPin = -1;
+static bool dbl = false;
+
+static lgfx::Bus_RGB* rgbBus() { return (lgfx::Bus_RGB*)((lgfx::Panel_Device*)lcd.getPanel())->getBus(); }
+
+static void dblInit() {
+  if (dbl || fbB) return;
+  auto* b = rgbBus();
+  fbB = (uint8_t*)heap_caps_malloc(FB_BYTES, MALLOC_CAP_SPIRAM);
+  if (!fbB) return;
+  fbA = fbCur = b->_frame_buffer;
+  fbSkip = (uint8_t*)b->_dmadesc_restart.buffer - (uint8_t*)b->_dmadesc[0].buffer;
+  vsyncPin = b->config().pin_vsync;
+  PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[vsyncPin]);
+  int hi = 0, n = 0;  // boşta seviyesi: çoğunlukta olan (vsync darbesi kısa)
+  for (uint32_t t = micros(); micros() - t < 70000; n++) hi += gpio_get_level((gpio_num_t)vsyncPin);
+  vsyncIdle = hi * 2 > n ? 1 : 0;
+  dbl = true;
+}
+
+// Gösterilen tamponu değiştir (vsync darbesi başlayınca; DMA yeniden başlamadan önce)
+static void flipTo(uint8_t* nb) {
+  auto* b = rgbBus();
+  uint32_t t = micros();
+  while (gpio_get_level((gpio_num_t)vsyncPin) == vsyncIdle && micros() - t < 50000) {}
+  size_t n = (FB_BYTES - 1) / DMA_CHUNK + 1;
+  portDISABLE_INTERRUPTS();
+  for (size_t i = 0; i < n; i++) b->_dmadesc[i].buffer = nb + i * DMA_CHUNK;
+  b->_dmadesc_restart.buffer = nb + fbSkip;
+  portENABLE_INTERRUPTS();
+  fbCur = nb;
+}
+
 static void drawFrame() {
   bool land = uiIsLandscape();
   int w = land ? KW : KH, h = land ? KH : KW, W = w * 5;
   memcpy(fbuf, fback, KW * KW * 2);  // UDP yazarken çizmeyelim
+  bool direct = dbl && land;
+  uint8_t* hid = direct ? (fbCur == fbA ? fbB : fbA) : nullptr;
+  bool flip = direct && lcd.getRotation() == 2;
   for (int y = 0; y < h; y++) {
     const uint16_t* src = fbuf + y * w;
     uint16_t* row = blk;
-    for (int x = 0; x < w; x++) {
-      uint16_t c = src[x];
-      row[0] = row[1] = row[2] = row[3] = row[4] = c;
-      row += 5;
+    if (!flip) {
+      for (int x = 0; x < w; x++) {
+        uint16_t c = src[x];
+        row[0] = row[1] = row[2] = row[3] = row[4] = c;
+        row += 5;
+      }
+    } else {
+      for (int x = w - 1; x >= 0; x--) {
+        uint16_t c = src[x];
+        row[0] = row[1] = row[2] = row[3] = row[4] = c;
+        row += 5;
+      }
     }
     for (int k = 1; k < 5; k++) memcpy(blk + k * W, blk, W * 2);
-    lcd.pushImage(0, y * 5, W, 5, (lgfx::rgb565_t*)blk);
+    if (direct) {
+      int py = flip ? 480 - (y + 1) * 5 : y * 5;
+      memcpy(hid + (size_t)py * 1600, blk, W * 2 * 5);  // 5 satır art arda (satır adımı 1600 bayt)
+    } else {
+      lcd.pushImage(0, y * 5, W, 5, (lgfx::rgb565_t*)blk);
+    }
+  }
+  if (direct) {
+    Cache_WriteBack_Addr((uint32_t)hid, FB_BYTES);
+    flipTo(hid);
   }
 }
 
@@ -242,6 +304,7 @@ void efektEkranAc() {
   frameCnt = 0;
   shownCnt = 0;
   memset(fbuf, 0, KW * KW * 2);
+  dblInit();
   lv_label_set_text(msg, "Yapay zeka efekti hazırlanıyor…");
   lv_obj_remove_flag(msg, LV_OBJ_FLAG_HIDDEN);
   lv_obj_remove_flag(ov, LV_OBJ_FLAG_HIDDEN);
@@ -250,7 +313,9 @@ void efektEkranAc() {
 void efektEkranKapat() {
   if (!shown) return;
   shown = false;
+  if (dbl && fbCur != fbA) flipTo(fbA);  // LVGL asıl tampona çizer
   lv_obj_add_flag(ov, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_invalidate(lv_screen_active());
   efektDurdur();
 }
 
