@@ -36,3 +36,9 @@ Sıradaki: kullanıcı cevapları (aşağıdaki sorular), LedPanel gerçek test,
 - Lambalar sekmesi web kartıyla aynı (dBm, R1/R2, zamanlayıcı özeti) + `src/ui_timer.cpp` zamanlayıcı penceresi (saat, gün, gündoğumu/batımı).
 - Web: sayfalar Ana (saat/hava/haber/lamba/efekt), Lambalar, Efekt, Oto-Hava, Cihazlar, Sistem (parlaklık, yön, Telegram, bilgi), WiFi, Kayıt, Notlar. Yeni uçlar: `/api/news`, `/api/sistem*`, `/api/telegram`, `/api/efekt/*`, `/api/aikey` (`src/web_extra.cpp`, `src/efekt.cpp`).
 - PC kurulumu: `araclar/KURULUM.bat`.
+
+## 2026-10-13 ogleden sonra - "hava-ilk" dali (GUNCEL CALISAN SURUM)
+Kullanici isteviyle sabahki ilk hava efekti kodunun (commit ab81947, LVGL goruntu olcekli gokyuzu) ustune donuldu; `core3-esp-lcd` dalindaki Arduino core 3 / esp_lcd / cift tampon / karo mantigi KULLANILMIYOR (referans icin duruyor).
+Bu dalda: platform espressif32@7.0.1 (core 2.0.17, LovyanGFX); ekran saati 12 MHz (15 MHz'de hafif sallanti vardi; 12 MHz'de parazit/titreme kullanici tarafindan gitti diye dogrulandi; 21/24 MHz bozuyor, yukseltme); kayan haber seridi (alt, tam genislik); sehir + surum ust satirda; canli renkler (UI + gokyuzu paleti doygunluk x1.95); ince cerceveler; LVGL bellegi PSRAM'de (src/lv_mem_psram.cpp; yoksa haber/hava TLS "Memory allocation failed"); hubOnWifiUp ayri gorevde (NTP/mDNS/web kurulumu arayuzu dondurmasin).
+Olcum bulgusu (dal wip-olcum-2026-10-13): bounce-buffer'li esp_lcd'de ISR'nin her 495 us'de yaptigi 12800 bayt PSRAM okumasi ana sayfada 574 us suruyordu (butce 495) -> parazit. Gokyuzu yukunu azaltmadan ekran saatini yukseltme.
+Yukleme: ana sayfa yavasken OTA %10'da takiliyor -> USB (COM3) ile yukle: `pio run -t upload --upload-port COM3`.
