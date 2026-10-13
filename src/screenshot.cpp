@@ -7,6 +7,7 @@
 
 extern volatile int devTabReq;     // ui_hub.cpp
 extern volatile bool devRotReq;
+extern volatile int devSkyMode;
 extern volatile int devTimerReq;
 
 static uint8_t rowBuf[800 * 3 + 4];
@@ -22,6 +23,10 @@ void devScreenshotRoute(AsyncWebServer& server) {
   });
   server.on("/dev/timer", HTTP_GET, [](AsyncWebServerRequest* r) {
     devTimerReq = r->hasParam("i") ? r->getParam("i")->value().toInt() : 0;
+    r->send(200, "text/plain", "ok");
+  });
+  server.on("/dev/sky", HTTP_GET, [](AsyncWebServerRequest* r) {
+    devSkyMode = r->hasParam("m") ? r->getParam("m")->value().toInt() : 0;
     r->send(200, "text/plain", "ok");
   });
   server.on("/dev/rot", HTTP_GET, [](AsyncWebServerRequest* r) {

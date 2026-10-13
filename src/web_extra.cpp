@@ -12,7 +12,10 @@
 #include "ui_common.h"
 
 extern AsyncWebServer server;
-extern volatile bool devRotReq;  // ui_hub.cpp: ekran yönünü LVGL döngüsünde değiştirir
+extern volatile bool devRotReq;
+extern volatile uint32_t perfAvgUs, perfMaxUs, perfCalls, skyStepUs;
+extern volatile int16_t profAreas[48][4];
+extern volatile uint32_t profFlushUs, profFlushN, profFlushPx, profTimerUs, profSkyUs, profSkyPx;  // ui_hub.cpp: ekran yönünü LVGL döngüsünde değiştirir
 
 void webExtraRoutes() {
   // Canli gokyuzu karesi (8 bit paletli BMP, ~38 KB); web Ana sayfa ~1 sn'de bir ceker
@@ -58,6 +61,10 @@ void webExtraRoutes() {
     d["ip"] = WiFi.localIP().toString();
     d["up"] = millis() / 1000;
     d["heap"] = ESP.getFreeHeap();
+    d["lv_kare_2sn"] = (uint32_t)perfCalls;  d["lv_ort_ms"] = perfAvgUs / 1000.0f;  d["lv_maks_ms"] = perfMaxUs / 1000.0f;
+    d["p_flush_ms"] = profFlushUs / 1000; d["p_flush_n"] = profFlushN; d["p_flush_px"] = profFlushPx; d["p_tick_ms"] = profTimerUs / 1000; d["p_sky_ms"] = profSkyUs / 1000; d["p_sky_px"] = profSkyPx;
+    { JsonArray ar = d["alan"].to<JsonArray>(); for (int i = 0; i < 48; i++) { JsonArray r = ar.add<JsonArray>(); for (int j = 0; j < 4; j++) r.add((int)profAreas[i][j]); } }
+    d["sky_seq"] = skyFrameSeq();  d["sky_uret_ms"] = skyStepUs / 1000.0f;
     String o;
     serializeJson(d, o);
     r->send(200, "application/json", o);

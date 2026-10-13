@@ -10,6 +10,7 @@
 #include "app_state.h"
 
 static uint8_t* idx = nullptr;          // SKY_W*SKY_H palet indeksi (PSRAM)
+volatile uint32_t profSkyUs = 0, profSkyPx = 0;
 static uint16_t* rgb = nullptr;         // SKY_W*SKY_H RGB565 (palet uygulanmis)
 static uint16_t* big = nullptr;         // SKY_BW*SKY_BH: 2x bilinear buyutulmus (LVGL bunu cizer); yalniz degisen karolar guncellenir
 static uint8_t* pubIdx = nullptr;       // gorevin yayinladigi son kare (palet indeksleri)
@@ -897,68 +898,74 @@ const uint16_t* skyRGB565() { return big; }
 // satir bazinda birlestirilmis dikdortgenleri (2x koordinat) dondur. Boylece kare basina PSRAM yazimi yalniz degisen yerler kadar olur.
 static const int TW = 16, TH = 16, NTX = (SKY_W + TW - 1) / TW, NTY = (SKY_H + TH - 1) / TH;
 int skyApplyDirty(SkyRect* out, int maxOut) {
+  uint32_t tp = micros();
   if (!big || xSemaphoreTake(pmtx, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
-  static bool first = true;
-  bool palChanged = memcmp(lastPal, pubPal, sizeof(pubPal)) != 0 || first;
-  first = false;
-  static uint8_t dirty[NTY][NTX];
-  int nd = 0;
-  for (int ty = 0; ty < NTY; ty++)
-    for (int tx = 0; tx < NTX; tx++) {
-      int x0 = tx * TW, y0 = ty * TH, x1 = min(x0 + TW + 1, SKY_W), y1 = min(y0 + TH + 1, SKY_H);
-      bool d = palChanged;
-      for (int y = y0; y < y1 && !d; y++)
-        if (memcmp(pubIdx + y * SKY_W + x0, lastIdx + y * SKY_W + x0, x1 - x0)) d = true;
-      dirty[ty][tx] = d;
-      nd += d;
-    }
-  if (nd) {
-    auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
-    for (int ty = 0; ty < NTY; ty++)
-      for (int tx = 0; tx < NTX; tx++) {
-        if (!dirty[ty][tx]) continue;
-        int xs = tx * TW, ys = ty * TH, xe = min(xs + TW, SKY_W), ye = min(ys + TH, SKY_H);
-        for (int y = ys; y < ye; y++) {
-          const uint8_t* i0 = pubIdx + y * SKY_W;
-          const uint8_t* i1 = y + 1 < SKY_H ? i0 + SKY_W : i0;
-          uint16_t* d0 = big + (size_t)(2 * y) * SKY_BW;
-          uint16_t* d1 = d0 + SKY_BW;
-          for (int x = xs; x < xe; x++) {
-            int xn = x + 1 < SKY_W ? x + 1 : x;
-            uint16_t a = pubPal[i0[x] & 15], b = pubPal[i0[xn] & 15], c = pubPal[i1[x] & 15], d = pubPal[i1[xn] & 15];
-            uint16_t ab = avg(a, b), cd = avg(c, d);
-            d0[2 * x] = a;
-            d0[2 * x + 1] = ab;
-            d1[2 * x] = avg(a, c);
-            d1[2 * x + 1] = avg(ab, cd);
-          }
-        }
+  static uint32_t palSeq = 1, tilePal[NTY][NTX];
+  static int cursor = 0;
+  if (memcmp(lastPal, pubPal, sizeof(pubPal)) != 0) { palSeq++; memcpy(lastPal, pubPal, sizeof(lastPal)); }
+  // Kare basina BUTCE: en cok BUDGET_TILES karo islenir (her biri 32x32 ekran pikseli); gerisi sonraki yenilemelere kalir.
+  // Boylece yagmurda tum resim degisse bile her yenileme ~40 ms'de biter ve alt yazi akici kalir.
+  const int BUDGET_TILES = 40;
+  static bool done[NTY][NTX];
+  memset(done, 0, sizeof(done));
+  int processed = 0, total = NTX * NTY;
+  auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
+  for (int k = 0; k < total && processed < BUDGET_TILES; k++) {
+    int ti = (cursor + k) % total, ty = ti / NTX, tx = ti % NTX;
+    int xs = tx * TW, ys = ty * TH, xe = min(xs + TW, SKY_W), ye = min(ys + TH, SKY_H);
+    int x1 = min(xs + TW + 1, SKY_W), y1 = min(ys + TH + 1, SKY_H);
+    bool d = tilePal[ty][tx] != palSeq;
+    for (int y = ys; y < y1 && !d; y++)
+      if (memcmp(pubIdx + y * SKY_W + xs, lastIdx + y * SKY_W + xs, x1 - xs)) d = true;
+    if (!d) continue;
+    for (int y = ys; y < ye; y++) {
+      const uint8_t* i0 = pubIdx + y * SKY_W;
+      const uint8_t* i1 = y + 1 < SKY_H ? i0 + SKY_W : i0;
+      uint16_t* d0 = big + (size_t)(2 * y) * SKY_BW;
+      uint16_t* d1 = d0 + SKY_BW;
+      for (int x = xs; x < xe; x++) {
+        int xn = x + 1 < SKY_W ? x + 1 : x;
+        uint16_t a = pubPal[i0[x] & 15], b = pubPal[i0[xn] & 15], c = pubPal[i1[x] & 15], dd = pubPal[i1[xn] & 15];
+        uint16_t ab = avg(a, b), cd = avg(c, dd);
+        d0[2 * x] = a;
+        d0[2 * x + 1] = ab;
+        d1[2 * x] = avg(a, c);
+        d1[2 * x + 1] = avg(ab, cd);
       }
-    memcpy(lastIdx, pubIdx, SKY_W * SKY_H);
-    memcpy(lastPal, pubPal, sizeof(lastPal));
+      memcpy(lastIdx + y * SKY_W + xs, pubIdx + y * SKY_W + xs, x1 - xs);  // bu karonun (+1 komsu) son islenen hali
+    }
+    tilePal[ty][tx] = palSeq;
+    done[ty][tx] = true;
+    processed++;
+    cursor = (ti + 1) % total;
   }
   xSemaphoreGive(pmtx);
-  // satir bazinda bitisik dirty karolari birlestir
+  profSkyUs += micros() - tp;
+  // islenen karolari satir bazinda birlestir
   int n = 0;
   for (int ty = 0; ty < NTY && n < maxOut; ty++) {
     int tx = 0;
     while (tx < NTX && n < maxOut) {
-      if (!dirty[ty][tx]) { tx++; continue; }
+      if (!done[ty][tx]) { tx++; continue; }
       int t0 = tx;
-      while (tx < NTX && dirty[ty][tx]) tx++;
+      while (tx < NTX && done[ty][tx]) tx++;
       out[n++] = {t0 * TW * 2, ty * TH * 2, min(tx * TW, SKY_W) * 2 - 1, min((ty + 1) * TH, SKY_H) * 2 - 1};
+      profSkyPx += (tx - t0) * TW * 2 * TH * 2;
     }
   }
   return n;
 }
 uint32_t skyFrameSeq() { return frameSeq; }
+volatile uint32_t skyStepUs = 0;  // son sahne uretim suresi (us)
 void skyWant(bool on) { wantFrames = on; }
 
 static void skyTask(void*) {
   uint32_t next = millis();
   for (;;) {
     if (wantFrames) {
+      uint32_t t0 = micros();
       skyStep();                 // sahneyi cizer ve yayinlar (frameSeq++)
+      skyStepUs = micros() - t0;
       next += 65;                // ~15 kare/sn (ekran 30,8 Hz: 2 vsync'te bir)
       int32_t wait = (int32_t)(next - millis());
       if (wait < 0) { next = millis(); wait = 1; }

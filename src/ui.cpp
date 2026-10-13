@@ -18,8 +18,14 @@ static int backlightPct = 100;
 static lv_display_t* disp;
 
 // ------------------------------------------------------------------ ekran / dokunmatik bağlantısı
+volatile int16_t profAreas[48][4];
+volatile uint32_t profFlushUs = 0, profFlushN = 0, profFlushPx = 0, profTimerUs = 0;
 static void flushCb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
+  uint32_t t0 = micros();
+  { static int k = 0; profAreas[k % 48][0] = a->x1; profAreas[k % 48][1] = a->y1; profAreas[k % 48][2] = a->x2; profAreas[k % 48][3] = a->y2; k++; }
+  profFlushN++; profFlushPx += (a->x2 - a->x1 + 1) * (a->y2 - a->y1 + 1);
   displayFlush(a, (const uint16_t*)px, lv_display_flush_is_last(d));
+  profFlushUs += micros() - t0;
   lv_display_flush_ready(d);
 }
 
@@ -80,6 +86,7 @@ void guiInit() {
 
   lv_init();
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
+  // Cizim tamponlari PSRAM'de: ic RAM tamponu bos belleği 32 KB'ye dusurup HTTPS'i (hava/haber) oldurdu
   const uint32_t bufPx = 800 * 40;
   void* b1 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
   void* b2 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
@@ -93,7 +100,19 @@ void guiInit() {
   lv_indev_set_read_cb(in, touchCb);
 }
 
-void guiLoop() { lv_timer_handler(); }
+// Performans sayaci (/api/sistem): lv_timer_handler suresi (3 ms ustu = gercek cizim karesi), son 2 sn
+volatile uint32_t perfAvgUs = 0, perfMaxUs = 0, perfCalls = 0;
+void guiLoop() {
+  static uint32_t winStart = 0, sum = 0, mx = 0, n = 0;
+  uint32_t t0 = micros();
+  lv_timer_handler();
+  uint32_t d = micros() - t0;
+  if (d > 3000) { sum += d; n++; if (d > mx) mx = d; }
+  if (millis() - winStart >= 2000) {
+    perfAvgUs = n ? sum / n : 0; perfMaxUs = mx; perfCalls = n;
+    winStart = millis(); sum = mx = n = 0;
+  }
+}
 
 // ------------------------------------------------------------------ ekranlar
 static lv_obj_t *scrList, *scrPass, *scrBusy, *scrHome;

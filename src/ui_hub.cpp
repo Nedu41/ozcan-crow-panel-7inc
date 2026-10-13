@@ -734,7 +734,7 @@ volatile int devTimerReq = -1;
 // ---- hava karti: yerlesim (sahne koordinatlari x olcek) ve mini ikonlar
 static void layoutSky(int w) {
   float sc = (w - 6) / (float)SKY_W;
-  if (w - 6 >= 640) { sc = 2.0f; lv_obj_set_width(skyCard, 646); }  // yatay: tam 1:1 (hizli, net)
+  if (w - 6 >= 630) { sc = 2.0f; lv_obj_set_width(skyCard, 646); }  // tam 2.0 olcek (256): 637/320=1.99 -> 254 yavas donusum yoluna giriyordu  // yatay: tam 1:1 (hizli, net)
   auto P = [&](float v) { return (int)(v * sc + 0.5f); };
   lv_image_set_scale(skyImg, (int)(128 * sc));
   lv_obj_set_height(skyCard, P(SKY_H) + 6);
@@ -829,27 +829,36 @@ static void skyTick(lv_timer_t*) {
     layoutSky(w);
   }
   {
+    // test anahtari: yalniz MOD DEGISINCE uygula (lv_obj_remove_flag(HIDDEN) nesneyi KOSULSUZ gecersiz kilar:
+    // her tikte cagrilinca resim + kutular her kare bastan ciziliyordu)
+    static int lastMode = 0;
     int m = devSkyMode;
-    auto setHide = [](lv_obj_t* o, bool h) { if (h) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); };
-    setHide(skyImg, m == 1);
-    setHide(boxT, m == 2); setHide(boxW, m == 2);
-    setHide(boxF, m == 2 || m == 3);
+    if (m != lastMode) {
+      lastMode = m;
+      auto setHide = [](lv_obj_t* o, bool h) { if (h) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); };
+      setHide(skyImg, m == 1);
+      setHide(boxT, m == 2); setHide(boxW, m == 2);
+      setHide(boxF, m == 2 || m == 3);
+    }
   }
   static uint32_t seen = 0;
   uint32_t seq = skyFrameSeq();
   if (seq == seen) return;  // yeni kare yok
   seen = seq;
-  static SkyRect rc[32];
-  int n = skyApplyDirty(rc, 32);
+  static SkyRect rc[28];
+  int n = skyApplyDirty(rc, 28);
   if (n == 0) return;
-  if (lv_image_get_scale(skyImg) != 256 || n >= 32) { lv_obj_invalidate(skyImg); return; }
+  if (lv_image_get_scale(skyImg) != 256) { lv_obj_invalidate(skyImg); return; }
   for (int i = 0; i < n; i++) {
     lv_area_t a = {rc[i].x1, rc[i].y1, rc[i].x2, rc[i].y2};
     lv_obj_invalidate_area(skyImg, &a);
   }
 }
 
-static void tick(lv_timer_t*) {
+extern volatile uint32_t profTimerUs;
+static void tick_inner();
+static void tick(lv_timer_t*) { uint32_t t0 = micros(); tick_inner(); profTimerUs += micros() - t0; }
+static void tick_inner() {
   if (devTabReq >= 0) { lv_tabview_set_active(tv, devTabReq, LV_ANIM_OFF); devTabReq = -1; }
   if (devRotReq) { devRotReq = false; uiRotate(); }
   if (devTimerReq >= 0) { int i = devTimerReq; devTimerReq = -1; uiTimerOpen(i); }
