@@ -12,7 +12,7 @@
 
 extern AsyncWebServer server;
 extern LGFX lcd;
-static volatile uint32_t frameCnt = 0;
+static volatile uint32_t frameCnt = 0, drawUs = 0;
 EfektState efektSt;
 
 static const int KW = 160, KH = 96;  // kare: yatay 160x96, dikey 96x160 (5x büyütülür -> 800x480)
@@ -57,7 +57,7 @@ void efektRoutes() {
   });
   server.on("/api/efekt", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest* r) {
     bool land = uiIsLandscape();
-    r->send(200, "application/json", String("{\"w\":") + (land ? KW : KH) + ",\"h\":" + (land ? KH : KW) + ",\"kare\":" + frameCnt + "}");
+    r->send(200, "application/json", String("{\"w\":") + (land ? KW : KH) + ",\"h\":" + (land ? KH : KW) + ",\"kare\":" + frameCnt + ",\"cizim_us\":" + drawUs + "}");
   });
 }
 
@@ -228,7 +228,7 @@ static void ovTick(lv_timer_t*) {
       drawAfter = millis() + 120;
     }
     shownCnt = frameCnt;
-    if (millis() >= drawAfter) drawFrame();
+    if (millis() >= drawAfter) { uint32_t t0 = micros(); drawFrame(); drawUs = micros() - t0; }
   } else if (frameCnt == 0 && millis() - openedAt > 6000) {
     lv_label_set_text(msg, efektSt.ok ? "Kare gelmiyor\n(dokun: çık)" : "PC köprüsü bulunamadı\n(dokun: çık)");
     lv_obj_remove_flag(msg, LV_OBJ_FLAG_HIDDEN);

@@ -41,7 +41,7 @@ class LGFX : public lgfx::LGFX_Device {
       c.pin_vsync = 40;
       c.pin_hsync = 39;
       c.pin_pclk = 0;
-      c.freq_write = 15000000;  // wiki değeri; V3.0 örneği 24 MHz kullanıyor
+      c.freq_write = 15000000;  // wiki degeri. 24 MHz denendi: goruntu titredi (PSRAM bant genisligi), GERI ALINDI
       c.hsync_polarity = 0;  c.hsync_front_porch = 40; c.hsync_pulse_width = 48; c.hsync_back_porch = 40;
       c.vsync_polarity = 0;  c.vsync_front_porch = 1;  c.vsync_pulse_width = 31; c.vsync_back_porch = 13;
       c.pclk_active_neg = 1;
