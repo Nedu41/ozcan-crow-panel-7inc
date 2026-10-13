@@ -87,9 +87,10 @@ void guiInit() {
   lv_init();
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
   // Cizim tamponlari PSRAM'de: ic RAM tamponu bos belleği 32 KB'ye dusurup HTTPS'i (hava/haber) oldurdu
-  const uint32_t bufPx = 800 * 40;
-  void* b1 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
-  void* b2 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_SPIRAM);
+  // DENEY: ic RAM'de tek kucuk cizim tamponu (PSRAM trafigini yariya indirir)
+  const uint32_t bufPx = 800 * 10;
+  void* b1 = heap_caps_malloc(bufPx * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  void* b2 = nullptr;
   disp = lv_display_create(displayW(), displayH());
   lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
   lv_display_set_flush_cb(disp, flushCb);

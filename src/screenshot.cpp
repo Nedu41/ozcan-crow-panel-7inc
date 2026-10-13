@@ -29,6 +29,23 @@ void devScreenshotRoute(AsyncWebServer& server) {
     devSkyMode = r->hasParam("m") ? r->getParam("m")->value().toInt() : 0;
     r->send(200, "text/plain", "ok");
   });
+  // /dev/bench: PSRAM (gorunen framebuffer) -> DRAM kopyalama suresi. LCD bounce kesmesi her 495 us'de 12800 bayt boyle kopyalar.
+  server.on("/dev/bench", HTTP_GET, [](AsyncWebServerRequest* r) {
+    static uint8_t dram[12800];
+    const uint8_t* src = (const uint8_t*)displayHidden();
+    uint32_t tot = 0, mx = 0, n = 0;
+    for (int i = 0; i < 300; i++) {
+      const uint8_t* s = src + (size_t)((i * 37) % 380) * 1600;  // her seferinde baska bolge (onbellek soguk)
+      uint32_t t0 = micros();
+      memcpy(dram, s, sizeof(dram));
+      uint32_t dt = micros() - t0;
+      tot += dt; if (dt > mx) mx = dt; n++;
+      vTaskDelay(1);
+    }
+    char b[96];
+    snprintf(b, sizeof(b), "ort=%u us maks=%u us n=%u (12800 bayt, butce 495 us)", (unsigned)(tot / n), (unsigned)mx, (unsigned)n);
+    r->send(200, "text/plain", b);
+  });
   server.on("/dev/rot", HTTP_GET, [](AsyncWebServerRequest* r) {
     devRotReq = true;
     r->send(200, "text/plain", "ok");
@@ -38,8 +55,9 @@ void devScreenshotRoute(AsyncWebServer& server) {
     const size_t rowBytes = (W * 3 + 3) & ~3u;
     const size_t total = 54 + rowBytes * H;
     curRow = -1;
+    displaySnapshot(true);
     AsyncWebServerResponse* r = req->beginChunkedResponse("image/bmp", [W, H, rowBytes, total](uint8_t* buf, size_t maxLen, size_t index) -> size_t {
-      if (index >= total) return 0;
+      if (index >= total) { displaySnapshot(false); return 0; }
       uint8_t hdr[54] = {'B', 'M'};
       le32(hdr + 2, total);
       le32(hdr + 10, 54);

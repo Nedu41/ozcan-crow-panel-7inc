@@ -16,3 +16,6 @@ void displayFlush(const lv_area_t* a, const uint16_t* px, bool last);
 uint16_t* displayHidden();
 void displayFlip(uint16_t* hidden);            // gizliyi göster; sonraki LVGL karesi tam eşitler
 bool displayReadRow(int y, uint16_t* out);     // mantıksal satır (ekran görüntüsü için), görünen tampondan
+
+void displayEffectEnd();                       // efekt kapandi: LVGL yazimi yeniden acilir (cagiran tam yeniden cizim ister)
+void displaySnapshot(bool on);                 // true: gorunen tamponun anlik kopyasini al (displayReadRow bundan okur); false: birak

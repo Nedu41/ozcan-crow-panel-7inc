@@ -317,6 +317,7 @@ void efektEkranKapat() {
   if (!shown) return;
   shown = false;
   lv_obj_add_flag(ov, LV_OBJ_FLAG_HIDDEN);
+  displayEffectEnd();
   lv_obj_invalidate(lv_screen_active());
   efektDurdur();
 }

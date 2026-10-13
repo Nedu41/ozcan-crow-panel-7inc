@@ -935,7 +935,7 @@ int skyApplyDirty(SkyRect* out, int maxOut) {
       }
     memcpy(lastIdx, pubIdx, SKY_W * SKY_H);  // "son karsilastirilan kare" (islenmis anlamina GELMEZ; islenme pending ile izlenir)
   }
-  const int BUDGET_TILES = 24;
+  const int BUDGET_TILES = 400;  // hepsi: her gosterilen kare tek bir sahne karesinden (tutarli). Dogrudan modda LVGL yetisiyor
   static bool done[NTY][NTX];
   memset(done, 0, sizeof(done));
   int processed = 0, total = NTX * NTY;
