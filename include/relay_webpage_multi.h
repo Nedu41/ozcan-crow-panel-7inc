@@ -626,7 +626,7 @@ body{padding-bottom:46px}
 .wbox .big{font-size:calc(var(--u)*28);font-weight:bold}
 .wbox canvas{width:calc(var(--u)*19);height:calc(var(--u)*16)}
 .fcol{flex:1;text-align:center;font-size:calc(var(--u)*6.5);border:2px solid transparent;border-radius:calc(var(--u)*5);margin:calc(var(--u)*1);overflow:hidden;white-space:nowrap}
-#hNewsBar{position:fixed;left:0;right:0;bottom:0;background:#1f1f28;border-top:3px solid #000;color:#bfa8f2;overflow:hidden;white-space:nowrap;padding:6px 0;z-index:5}
+#hNewsBar{position:fixed;left:0;right:0;bottom:0;background:#1f1f28;border-top:3px solid #000;color:#a582ff;overflow:hidden;white-space:nowrap;padding:6px 0;z-index:5}
 #hNewsBar span{display:inline-block;padding-left:100%;animation:tick 120s linear infinite}
 @keyframes tick{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 </style>
@@ -2073,16 +2073,16 @@ function renderHome() {
     document.getElementById("content").innerHTML = `
     <div class="settings-container">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
-            <div id="hClock" style="font-size:2.6em;color:#bfa8f2;font-weight:bold">--:--</div>
+            <div id="hClock" style="font-size:2.6em;color:#a582ff;font-weight:bold">--:--</div>
             <div id="hDate" style="text-align:right;color:#dadae4"></div>
         </div>
     </div>
     <div class="settings-container" style="padding:0;overflow:hidden">
       <div id="hSkyBox" style="position:relative;width:100%;--u:2px">
         <img id="hSky" src="/api/sky.bmp" style="width:100%;display:block" alt="">
-        <div id="hWT" class="wbox" style="left:1.875%;top:3.26%;width:46.875%;height:43.48%;border-color:#f4a6c8"></div>
-        <div id="hWW" class="wbox" style="left:51.25%;top:3.26%;width:46.875%;height:43.48%;border-color:#b9a6f4"></div>
-        <div id="hWF" class="wbox" style="left:1.875%;top:72.83%;width:96.25%;height:25%;border-color:#a6f4d0;display:flex"></div>
+        <div id="hWT" class="wbox" style="left:1.875%;top:3.26%;width:46.875%;height:43.48%;border-color:#ff5fa8"></div>
+        <div id="hWW" class="wbox" style="left:51.25%;top:3.26%;width:46.875%;height:43.48%;border-color:#9b7bff"></div>
+        <div id="hWF" class="wbox" style="left:1.875%;top:72.83%;width:96.25%;height:25%;border-color:#2ef2b0;display:flex"></div>
       </div>
     </div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Lambalar</div><div id="hLamps"></div></div>
@@ -2103,18 +2103,18 @@ function refreshHome() {
         const box = document.getElementById("hSkyBox");
         if (box) box.style.setProperty("--u", (box.clientWidth / 320) + "px");
         if (w.description === "OK") {
-            set("hWT", `<div style="padding:calc(var(--u)*3) calc(var(--u)*6)"><div>${wmoText(w.weathercode)}</div><div><span class="big" style="color:#f4a6c8">${Math.round(w.temp)}</span><span style="color:#f4a6c8;font-size:calc(var(--u)*14)"> °C</span></div></div>`);
-            set("hWW", `<div style="padding:calc(var(--u)*3) calc(var(--u)*6)"><div style="display:flex;justify-content:space-between"><span style="color:#9a9aae">RÜZGAR</span><span>${escHtml(w.wind_direction || "")}</span></div><div><span class="big" style="color:#b9a6f4">${Number(w.wind_speed).toFixed(1)}</span><span style="color:#b9a6f4;font-size:calc(var(--u)*12)"> km/s</span></div></div>`);
+            set("hWT", `<div style="padding:calc(var(--u)*3) calc(var(--u)*6)"><div>${wmoText(w.weathercode)}</div><div><span class="big" style="color:#ff5fa8">${Math.round(w.temp)}</span><span style="color:#ff5fa8;font-size:calc(var(--u)*14)"> °C</span></div></div>`);
+            set("hWW", `<div style="padding:calc(var(--u)*3) calc(var(--u)*6)"><div style="display:flex;justify-content:space-between"><span style="color:#9a9aae">RÜZGAR</span><span>${escHtml(w.wind_direction || "")}</span></div><div><span class="big" style="color:#9b7bff">${Number(w.wind_speed).toFixed(1)}</span><span style="color:#9b7bff;font-size:calc(var(--u)*12)"> km/s</span></div></div>`);
             const g = ["Pz","Pt","Sa","Ça","Pe","Cu","Ct"], tw = new Date().getDay();
             let f = "";
             (w.fc || []).slice(0, 7).forEach((d, i) => {
                 const past = i === 0, today = i === 1;
-                f += `<div class="fcol" style="${today ? 'border-color:#f4e3a6' : ''}"><div style="color:${today ? '#f4e3a6' : past ? '#9a9aae' : '#dadae4'}">${today ? "BUGÜN" : g[(tw + i + 6) % 7]}</div><div style="color:${past ? '#9a9aae' : '#a6f4d0'}">${d[1]}/${d[2]}</div><canvas width="26" height="22" data-c="${d[0]}" data-p="${past ? 1 : 0}"></canvas></div>`;
+                f += `<div class="fcol" style="${today ? 'border-color:#ffd23f' : ''}"><div style="color:${today ? '#ffd23f' : past ? '#9a9aae' : '#dadae4'}">${today ? "BUGÜN" : g[(tw + i + 6) % 7]}</div><div style="color:${past ? '#9a9aae' : '#2ef2b0'}">${d[1]}/${d[2]}</div><canvas width="26" height="22" data-c="${d[0]}" data-p="${past ? 1 : 0}"></canvas></div>`;
             });
             set("hWF", f);
             document.querySelectorAll("#hWF canvas").forEach(c => drawMini(c.getContext("2d"), +c.dataset.c, c.dataset.p === "1"));
         } else if (w.description === "NO_LOCATION") {
-            set("hWT", `<div style="padding:6px">Konum ayarlanmamış.<br><a href="/weather" onclick="route('/weather');return false;" style="color:#bfa8f2">Oto-Hava</a></div>`);
+            set("hWT", `<div style="padding:6px">Konum ayarlanmamış.<br><a href="/weather" onclick="route('/weather');return false;" style="color:#a582ff">Oto-Hava</a></div>`);
         } else set("hWT", `<div style="padding:6px">Hava verisi alınamadı</div>`);
         let l = "";
         DEVICES.forEach((d, i) => {
@@ -2132,13 +2132,13 @@ function refreshHome() {
     fetch("/api/efekt/durum").then(r => r.json()).then(j => {
         let h = j.ok ? "" : `<div style="color:#ff9a9a;margin-bottom:6px">PC köprüsü yok (efekt_koprusu.py açık olmalı)</div>`;
         (j.liste || []).forEach(ad => h += `<button class="btn off" style="margin:3px" ${j.ok ? '' : 'disabled'} onclick="fxPlay('${escHtml(ad)}')">${escHtml(ad)}</button>`);
-        h += ` <a href="/efekt" onclick="route('/efekt');return false;" style="color:#bfa8f2">Tümü / yeni efekt</a>`;
+        h += ` <a href="/efekt" onclick="route('/efekt');return false;" style="color:#a582ff">Tümü / yeni efekt</a>`;
         set("hFx", h);
     }).catch(() => {});
 }
 function drawMini(g, code, past) {
     g.clearRect(0, 0, 26, 22);
-    const gray = "#969696", sun = past ? gray : "#f4e3a6", cl = past ? gray : "#e6e0f8", drop = past ? gray : "#b9a6f4";
+    const gray = "#969696", sun = past ? gray : "#ffd23f", cl = past ? gray : "#e6e0f8", drop = past ? gray : "#9b7bff";
     const cx = 13, cy = 11;
     const disc = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
     const line = (a, b, c2, d, c) => { g.strokeStyle = c; g.lineWidth = 1; g.beginPath(); g.moveTo(a + .5, b + .5); g.lineTo(c2 + .5, d + .5); g.stroke(); };
@@ -2200,7 +2200,7 @@ function renderEfekt() {
             <button class="btn" onclick="saveAiKey()">Kaydet</button>
             <span id="aiKeyState">…</span>
         </div>
-        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#bfa8f2">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
+        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#a582ff">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
     </div>`;
     loadAiKey(); refreshEfekt();
 }

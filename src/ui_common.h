@@ -11,10 +11,10 @@ extern "C" { extern const lv_font_t noto16, noto20, noto28; }
 #define C_FRAME    lv_color_hex(0x000000)
 #define C_TEXT     lv_color_hex(0xDADAE4)
 #define C_DIM      lv_color_hex(0x9A9AAE)
-#define C_CYAN     lv_color_hex(0xBFA8F2)  // pastel lavanta (saat, sekmeler, birincil dugme, kayan yazi)
-#define C_ORANGE   lv_color_hex(0xF2B8C6)  // pastel gul
-#define C_GREEN    lv_color_hex(0x8FE0A0)
-#define C_RED      lv_color_hex(0xFF9A9A)
+#define C_CYAN     lv_color_hex(0xA582FF)  // canli mor (saat, sekmeler, birincil dugme, kayan yazi)
+#define C_ORANGE   lv_color_hex(0xFF6FA8)  // canli pembe
+#define C_GREEN    lv_color_hex(0x4DE38A)
+#define C_RED      lv_color_hex(0xFF5C5C)
 #define C_ONPASTEL lv_color_hex(0x0E0E14)
 
 inline lv_obj_t* uiLabel(lv_obj_t* par, const char* t, const lv_font_t* f, lv_color_t c) {

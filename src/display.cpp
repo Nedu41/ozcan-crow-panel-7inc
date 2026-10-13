@@ -45,7 +45,7 @@ void displayInit(uint8_t rot) {
   c.data_width = 16;
   c.bits_per_pixel = 16;
   c.num_fbs = 2;
-  c.bounce_buffer_size_px = PW * 6;  // iki DRAM tamponu (~19 KB): DMA PSRAM yerine buradan okur
+  c.bounce_buffer_size_px = PW * 8;  // iki DRAM tamponu (~26 KB): DMA PSRAM yerine buradan okur
   c.dma_burst_size = 64;
   c.hsync_gpio_num = 39;
   c.vsync_gpio_num = 40;

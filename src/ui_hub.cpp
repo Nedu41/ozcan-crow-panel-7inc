@@ -57,11 +57,11 @@ static void setDot(lv_obj_t* d, bool ok) {
 static lv_obj_t *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
 static lv_obj_t *skyCard, *skyImg, *boxT, *boxW, *boxF, *lblTempC, *lblWindT, *lblWindDir, *lblWindVal, *lblWindU;
 static const int IC_W = 26, IC_H = 22;
-// Hava karti paleti (ev-lamba ekranindan farkli): pastel pembe / lavanta / nane + soluk sari "bugun"; koyu yari saydam zemin
-#define WX_TEMP  lv_color_hex(0xF4A6C8)
-#define WX_WIND  lv_color_hex(0xB9A6F4)
-#define WX_FC    lv_color_hex(0xA6F4D0)
-#define WX_TODAY lv_color_hex(0xF4E3A6)
+// Hava karti paleti (ev-lamba ekranindan farkli, canli): pembe / mor / nane + sari "bugun"; koyu yari saydam zemin
+#define WX_TEMP  lv_color_hex(0xFF5FA8)
+#define WX_WIND  lv_color_hex(0x9B7BFF)
+#define WX_FC    lv_color_hex(0x2EF2B0)
+#define WX_TODAY lv_color_hex(0xFFD23F)
 static lv_obj_t *fcCol[7], *fcDay[7], *fcTmp[7], *fcIcon[7];
 static uint8_t* fcBuf[7];
 static int fcN = 0, fcCode[7], fcMax[7], fcMin[7];
@@ -745,8 +745,17 @@ static void skyTick(lv_timer_t*) {
     skyCardW = w;
     layoutSky(w);
   }
-  skyStep();
-  lv_obj_invalidate(skyImg);
+  // Sahne 160 ms'de bir ilerler; ekrana 4 yatay bant sirayla yazilir (40 ms'de bir bant). Boylece kare basina
+  // PSRAM yazimi kucuk kalir (titreme/cizgi ve alt yazi atlamasi azalir).
+  static int band = 0;
+  if (band == 0) skyStep();
+  if (lv_image_get_scale(skyImg) == 256) {
+    lv_area_t a = {0, band * (SKY_BH / 4), SKY_BW - 1, (band + 1) * (SKY_BH / 4) - 1};
+    lv_obj_invalidate_area(skyImg, &a);
+  } else {
+    if (band == 0) lv_obj_invalidate(skyImg);
+  }
+  band = (band + 1) & 3;
 }
 
 static void tick(lv_timer_t*) {
@@ -830,7 +839,7 @@ lv_obj_t* hubUiCreate() {
   buildSet();
   placeTabs();
   lv_timer_create(tick, 500, nullptr);
-  lv_timer_create(skyTick, 100, nullptr);
+  lv_timer_create(skyTick, 40, nullptr);
   efektStart();
   return scr;
 }
