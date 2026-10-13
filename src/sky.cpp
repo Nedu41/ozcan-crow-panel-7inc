@@ -10,7 +10,8 @@
 #include "app_state.h"
 
 static uint8_t* idx = nullptr;          // SKY_W*SKY_H palet indeksi (PSRAM)
-static uint16_t* rgb = nullptr;         // SKY_W*SKY_H RGB565 (LVGL icin)
+static uint16_t* rgb = nullptr;         // SKY_W*SKY_H RGB565 (palet uygulanmis)
+static uint16_t* big = nullptr;         // SKY_BW*SKY_BH: rgb'nin 2x bilinear buyutulmusu (LVGL icin)
 static SemaphoreHandle_t smtx;
 
 static inline uint16_t c565(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
@@ -807,6 +808,7 @@ void skyInit() {
   if (idx) return;
   idx = (uint8_t*)heap_caps_calloc(SKY_W * SKY_H, 1, MALLOC_CAP_SPIRAM);
   rgb = (uint16_t*)heap_caps_calloc(SKY_W * SKY_H, 2, MALLOC_CAP_SPIRAM);
+  big = (uint16_t*)heap_caps_calloc(SKY_BW * SKY_BH, 2, MALLOC_CAP_SPIRAM);
   smtx = xSemaphoreCreateMutex();
 }
 
@@ -858,6 +860,23 @@ static void stepLocked() {
   else demoLabel = "";
 
   for (int i = 0; i < SKY_W * SKY_H; i++) rgb[i] = S.pal[idx[i] & 15];
+  // 2x bilinear: her kaynak piksel 2x2 hedef; yari konumlar komsu ortalamasi (RGB565 bit hilesi)
+  auto avg = [](uint16_t a, uint16_t b) -> uint16_t { return (uint16_t)((((a ^ b) & 0xF7DE) >> 1) + (a & b)); };
+  for (int y = 0; y < SKY_H; y++) {
+    const uint16_t* r0 = rgb + y * SKY_W;
+    const uint16_t* r1 = y + 1 < SKY_H ? r0 + SKY_W : r0;
+    uint16_t* d0 = big + (size_t)(2 * y) * SKY_BW;
+    uint16_t* d1 = d0 + SKY_BW;
+    for (int x = 0; x < SKY_W; x++) {
+      int xn = x + 1 < SKY_W ? x + 1 : x;
+      uint16_t a = r0[x], b = r0[xn], c = r1[x], d = r1[xn];
+      uint16_t ab = avg(a, b), cd = avg(c, d);
+      d0[2 * x] = a;
+      d0[2 * x + 1] = ab;
+      d1[2 * x] = avg(a, c);
+      d1[2 * x + 1] = avg(ab, cd);
+    }
+  }
 }
 
 void skyStep() {
@@ -872,7 +891,7 @@ void skyStepIfStale(uint32_t maxAgeMs) {
   if (millis() - lastStep > maxAgeMs) skyStep();
 }
 
-const uint16_t* skyRGB565() { return rgb; }
+const uint16_t* skyRGB565() { return big; }
 
 // 8 bit paletli BMP (web): 54 + 1024 palet + SKY_W*SKY_H; satirlar alttan uste, 320 baytlik satir (4'un kati)
 size_t skyBmpSize() { return 54 + 1024 + (size_t)SKY_W * SKY_H; }

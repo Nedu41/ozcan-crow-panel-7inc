@@ -7,6 +7,7 @@
 #include <lvgl.h>
 
 #include "board.h"
+#include "dbuf.h"
 #include "hub.h"
 #include "ui_common.h"
 #include "ui_hub.h"
@@ -19,7 +20,8 @@ static lv_display_t* disp;
 
 // ------------------------------------------------------------------ ekran / dokunmatik bağlantısı
 static void flushCb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
-  lcd.pushImage(a->x1, a->y1, a->x2 - a->x1 + 1, a->y2 - a->y1 + 1, (lgfx::rgb565_t*)px);
+  if (dbufActive()) dbufFlush(a, (const uint16_t*)px, lv_display_flush_is_last(d));
+  else lcd.pushImage(a->x1, a->y1, a->x2 - a->x1 + 1, a->y2 - a->y1 + 1, (lgfx::rgb565_t*)px);
   lv_display_flush_ready(d);
 }
 
@@ -54,6 +56,7 @@ int uiGetBacklight() { return backlightPct; }
 bool uiIsLandscape() { return lcd.width() > lcd.height(); }
 
 void uiRotate() {
+  dbufRestoreOriginal();  // dikeyde LovyanGFX asil tampona yazar
   rot = (rot + 1) & 3;
   lcd.setRotation(rot);
   lv_display_set_resolution(disp, lcd.width(), lcd.height());
@@ -76,6 +79,7 @@ void guiInit() {
   lcd.init();
   lcd.setRotation(rot);
   lcd.fillScreen(TFT_BLACK);
+  dbufInit();
   ledcSetup(0, 5000, 8);
   ledcAttachPin(PIN_BL, 0);
   applyBacklight();
@@ -166,7 +170,7 @@ static void fillList(int n) {
     lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t* wl = lv_label_create(b);
     lv_label_set_text(wl, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_font(wl, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(wl, &noto28, 0);
     lv_obj_set_style_text_color(wl, rssi > -60 ? C_GREEN : (rssi > -75 ? C_ORANGE : C_RED), 0);
     lv_obj_t* nl = lv_label_create(b);
     lv_label_set_text(nl, names[shown]);

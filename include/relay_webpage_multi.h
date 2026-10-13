@@ -621,6 +621,14 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
     .dev-name { max-width: 150px; }
 }
 
+body{padding-bottom:46px}
+.wbox{position:absolute;border:2px solid;border-radius:calc(var(--u)*7);background:rgba(0,0,0,.3);box-sizing:border-box;color:#dadae4;font-size:calc(var(--u)*9);line-height:1.15;overflow:hidden}
+.wbox .big{font-size:calc(var(--u)*28);font-weight:bold}
+.wbox canvas{width:calc(var(--u)*19);height:calc(var(--u)*16)}
+.fcol{flex:1;text-align:center;font-size:calc(var(--u)*6.5);border:2px solid transparent;border-radius:calc(var(--u)*5);margin:calc(var(--u)*1);overflow:hidden;white-space:nowrap}
+#hNewsBar{position:fixed;left:0;right:0;bottom:0;background:#1f1f28;border-top:3px solid #000;color:#bfa8f2;overflow:hidden;white-space:nowrap;padding:6px 0;z-index:5}
+#hNewsBar span{display:inline-block;padding-left:100%;animation:tick 120s linear infinite}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 </style>
 </head>
 <body>
@@ -643,6 +651,7 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
 </div>
 
 <div id="alertbar"></div>
+<div id="hNewsBar"><span id="hNewsTxt">Haberler yükleniyor…</span></div>
 
 <div id="content">Yükleniyor...</div>
 
@@ -2064,16 +2073,18 @@ function renderHome() {
     document.getElementById("content").innerHTML = `
     <div class="settings-container">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
-            <div id="hClock" style="font-size:2.6em;color:#7fe0dc;font-weight:bold">--:--</div>
+            <div id="hClock" style="font-size:2.6em;color:#bfa8f2;font-weight:bold">--:--</div>
             <div id="hDate" style="text-align:right;color:#dadae4"></div>
         </div>
     </div>
-    <div class="settings-container" style="padding:0;overflow:hidden;position:relative">
-        <img id="hSky" src="/api/sky.bmp" style="width:100%;display:block;image-rendering:pixelated" alt="">
-        <div id="hWx" style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.5);padding:8px 12px;border-radius:10px">Hava durumu yükleniyor…</div>
-        <div id="hWx2" style="position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);padding:6px 12px;font-size:.9em"></div>
+    <div class="settings-container" style="padding:0;overflow:hidden">
+      <div id="hSkyBox" style="position:relative;width:100%;--u:2px">
+        <img id="hSky" src="/api/sky.bmp" style="width:100%;display:block" alt="">
+        <div id="hWT" class="wbox" style="left:1.875%;top:3.26%;width:46.875%;height:43.48%;border-color:#f4a6c8"></div>
+        <div id="hWW" class="wbox" style="left:51.25%;top:3.26%;width:46.875%;height:43.48%;border-color:#b9a6f4"></div>
+        <div id="hWF" class="wbox" style="left:1.875%;top:72.83%;width:96.25%;height:25%;border-color:#a6f4d0;display:flex"></div>
+      </div>
     </div>
-    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em">Dünya haberleri</div><div id="hNews" style="margin-top:6px">Haberler yükleniyor…</div></div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Lambalar</div><div id="hLamps"></div></div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Yapay zeka efektleri</div><div id="hFx"></div></div>`;
     refreshHome();
@@ -2089,16 +2100,22 @@ function refreshHome() {
     fetchStatus().then(() => {
         const w = CURRENT_WEATHER || {};
         let h;
-        let h2 = "";
+        const box = document.getElementById("hSkyBox");
+        if (box) box.style.setProperty("--u", (box.clientWidth / 320) + "px");
         if (w.description === "OK") {
-            h = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-                <div style="font-size:2.6em;color:#ffb27a;font-weight:bold">${Math.round(w.temp)}°</div>
-                <div><div style="font-size:1.3em">${wmoText(w.weathercode)}</div><div style="color:#b8b8cc;font-size:.85em">${escHtml(w.city_name || "")}</div></div></div>`;
-            h2 = `Rüzgâr ${Math.round(w.wind_speed)} km/s ${escHtml(w.wind_direction || "")} &nbsp; Nem %${w.humidity} &nbsp; Bulut %${w.clouds}<br><span style="color:#b8b8cc">Gün doğumu ${escHtml(w.sunrise_time || "")} &nbsp; Gün batımı ${escHtml(w.sunset_time || "")}</span>`;
+            set("hWT", `<div style="padding:calc(var(--u)*3) calc(var(--u)*6)"><div>${wmoText(w.weathercode)}</div><div><span class="big" style="color:#f4a6c8">${Math.round(w.temp)}</span><span style="color:#f4a6c8;font-size:calc(var(--u)*14)"> °C</span></div></div>`);
+            set("hWW", `<div style="padding:calc(var(--u)*3) calc(var(--u)*6)"><div style="display:flex;justify-content:space-between"><span style="color:#9a9aae">RÜZGAR</span><span>${escHtml(w.wind_direction || "")}</span></div><div><span class="big" style="color:#b9a6f4">${Number(w.wind_speed).toFixed(1)}</span><span style="color:#b9a6f4;font-size:calc(var(--u)*12)"> km/s</span></div></div>`);
+            const g = ["Pz","Pt","Sa","Ça","Pe","Cu","Ct"], tw = new Date().getDay();
+            let f = "";
+            (w.fc || []).slice(0, 7).forEach((d, i) => {
+                const past = i === 0, today = i === 1;
+                f += `<div class="fcol" style="${today ? 'border-color:#f4e3a6' : ''}"><div style="color:${today ? '#f4e3a6' : past ? '#9a9aae' : '#dadae4'}">${today ? "BUGÜN" : g[(tw + i + 6) % 7]}</div><div style="color:${past ? '#9a9aae' : '#a6f4d0'}">${d[1]}/${d[2]}</div><canvas width="26" height="22" data-c="${d[0]}" data-p="${past ? 1 : 0}"></canvas></div>`;
+            });
+            set("hWF", f);
+            document.querySelectorAll("#hWF canvas").forEach(c => drawMini(c.getContext("2d"), +c.dataset.c, c.dataset.p === "1"));
         } else if (w.description === "NO_LOCATION") {
-            h = `Konum ayarlanmamış. <a href="/weather" onclick="route('/weather');return false;" style="color:#7fe0dc">Oto-Hava</a> sayfasından şehir girin.`;
-        } else h = "Hava verisi alınamadı";
-        set("hWx", h); set("hWx2", h2);
+            set("hWT", `<div style="padding:6px">Konum ayarlanmamış.<br><a href="/weather" onclick="route('/weather');return false;" style="color:#bfa8f2">Oto-Hava</a></div>`);
+        } else set("hWT", `<div style="padding:6px">Hava verisi alınamadı</div>`);
         let l = "";
         DEVICES.forEach((d, i) => {
             const st = STATUS[d.name] || {};
@@ -2115,9 +2132,26 @@ function refreshHome() {
     fetch("/api/efekt/durum").then(r => r.json()).then(j => {
         let h = j.ok ? "" : `<div style="color:#ff9a9a;margin-bottom:6px">PC köprüsü yok (efekt_koprusu.py açık olmalı)</div>`;
         (j.liste || []).forEach(ad => h += `<button class="btn off" style="margin:3px" ${j.ok ? '' : 'disabled'} onclick="fxPlay('${escHtml(ad)}')">${escHtml(ad)}</button>`);
-        h += ` <a href="/efekt" onclick="route('/efekt');return false;" style="color:#7fe0dc">Tümü / yeni efekt</a>`;
+        h += ` <a href="/efekt" onclick="route('/efekt');return false;" style="color:#bfa8f2">Tümü / yeni efekt</a>`;
         set("hFx", h);
     }).catch(() => {});
+}
+function drawMini(g, code, past) {
+    g.clearRect(0, 0, 26, 22);
+    const gray = "#969696", sun = past ? gray : "#f4e3a6", cl = past ? gray : "#e6e0f8", drop = past ? gray : "#b9a6f4";
+    const cx = 13, cy = 11;
+    const disc = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
+    const line = (a, b, c2, d, c) => { g.strokeStyle = c; g.lineWidth = 1; g.beginPath(); g.moveTo(a + .5, b + .5); g.lineTo(c2 + .5, d + .5); g.stroke(); };
+    const cloud = (x, y, c) => { disc(x - 5, y + 1, 4, c); disc(x + 1, y - 2, 5, c); disc(x + 6, y + 1, 4, c); g.fillStyle = c; g.fillRect(x - 5, y + 1, 11, 4); };
+    const k = code < 0 ? 0 : code === 0 ? 1 : (code === 1 || code === 2) ? 2 : (code === 45 || code === 48) ? 4 : (code >= 51 && code <= 57) ? 5
+        : ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) ? 5 : ((code >= 71 && code <= 77) || code === 85 || code === 86) ? 6 : code >= 95 ? 7 : 3;
+    if (k === 1) { disc(cx, cy, 5, sun); for (let a = 0; a < 8; a++) { const r = a * Math.PI / 4; line(cx + Math.cos(r) * 7, cy + Math.sin(r) * 7, cx + Math.cos(r) * 9, cy + Math.sin(r) * 9, sun); } }
+    else if (k === 2) { disc(cx - 4, cy - 3, 5, sun); cloud(cx + 2, cy + 2, cl); }
+    else if (k === 4) { g.fillStyle = gray; for (let j = -1; j <= 1; j++) g.fillRect(cx - 9, cy + j * 5, 18, 1); }
+    else if (k === 5) { cloud(cx, cy - 3, cl); for (let j = -1; j <= 1; j++) line(cx + j * 5, cy + 5, cx + j * 5 - 2, cy + 9, drop); }
+    else if (k === 6) { cloud(cx, cy - 3, cl); for (let j = -1; j <= 1; j++) disc(cx + j * 5, cy + 7, 1, "#fff"); }
+    else if (k === 7) { cloud(cx, cy - 3, cl); line(cx + 1, cy + 3, cx - 2, cy + 7, sun); line(cx - 2, cy + 7, cx + 2, cy + 7, sun); line(cx + 2, cy + 7, cx - 1, cy + 10, sun); }
+    else if (k === 3) cloud(cx, cy, cl);
 }
 function skyLoop() {
     const im = document.getElementById("hSky");
@@ -2127,8 +2161,8 @@ function skyLoop() {
     im.src = "/api/sky.bmp?t=" + Date.now();
 }
 function showNews() {
-    const e = document.getElementById("hNews");
-    if (e && NEWS_ITEMS.length) e.innerHTML = NEWS_ITEMS.map(t => "• " + escHtml(t)).join("<br><br>");
+    const e = document.getElementById("hNewsTxt");
+    if (e && NEWS_ITEMS.length) { const t = NEWS_ITEMS.map(x => escHtml(x)).join("  +++  "); if (e.innerHTML !== t) e.innerHTML = t; }
 }
 function toggleHome(i, r) {
     const dev = DEVICES[i], st = STATUS[dev.name] || {};
@@ -2166,7 +2200,7 @@ function renderEfekt() {
             <button class="btn" onclick="saveAiKey()">Kaydet</button>
             <span id="aiKeyState">…</span>
         </div>
-        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7fe0dc">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
+        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#bfa8f2">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
     </div>`;
     loadAiKey(); refreshEfekt();
 }
@@ -2287,6 +2321,8 @@ window.onload = function() {
     setInterval(update, 15000);
     setInterval(() => { if (location.pathname === '/log') renderEvents(); }, 10000);
     setInterval(refreshHome, 20000);
+    setInterval(() => fetch("/api/news").then(r => r.json()).then(j => { NEWS_ITEMS = j.items || []; showNews(); }).catch(() => {}), 120000);
+    setTimeout(() => fetch("/api/news").then(r => r.json()).then(j => { NEWS_ITEMS = j.items || []; showNews(); }).catch(() => {}), 1500);
     skyLoop();
         setInterval(refreshEfekt, 3000);
 };

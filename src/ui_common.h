@@ -11,8 +11,8 @@ extern "C" { extern const lv_font_t noto16, noto20, noto28; }
 #define C_FRAME    lv_color_hex(0x000000)
 #define C_TEXT     lv_color_hex(0xDADAE4)
 #define C_DIM      lv_color_hex(0x9A9AAE)
-#define C_CYAN     lv_color_hex(0x7FE0DC)
-#define C_ORANGE   lv_color_hex(0xFFB27A)
+#define C_CYAN     lv_color_hex(0xBFA8F2)  // pastel lavanta (saat, sekmeler, birincil dugme, kayan yazi)
+#define C_ORANGE   lv_color_hex(0xF2B8C6)  // pastel gul
 #define C_GREEN    lv_color_hex(0x8FE0A0)
 #define C_RED      lv_color_hex(0xFF9A9A)
 #define C_ONPASTEL lv_color_hex(0x0E0E14)

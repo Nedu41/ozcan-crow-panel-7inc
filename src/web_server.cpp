@@ -15,7 +15,7 @@
 #include "news.h"
 #include "wifi_nets.h"
 #include "alerts.h"
-#include "relay_webpage_multi.h"
+#include "html_gz.h"
 
 static volatile unsigned long restartAt = 0;  // 0 = yok; webLoop() zamani gelince yeniden baslatir
 
@@ -49,7 +49,8 @@ QueueHandle_t proxyQueue = nullptr;
 void handleRoot(AsyncWebServerRequest *request) {
   // Kullanıcının isteği üzerine LittleFS yerine relay_webpage_multi.h'den yüklendi
   // no-cache: firmware guncellenince tarayici eski (onbellekteki) arayuzu gostermesin
-  AsyncWebServerResponse *res = request->beginResponse_P(200, "text/html", HTML_PAGE);
+  AsyncWebServerResponse *res = request->beginResponse_P(200, "text/html", HTML_GZ, HTML_GZ_LEN);
+  res->addHeader("Content-Encoding", "gzip");
   res->addHeader("Cache-Control", "no-cache");
   request->send(res);
 }

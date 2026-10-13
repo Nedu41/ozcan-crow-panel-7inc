@@ -9,7 +9,7 @@
 #define LV_DEF_REFR_PERIOD 16
 
 // Türkçe karakterli Noto Sans (src/fonts), semboller için Montserrat fallback
-#define LV_FONT_MONTSERRAT_14 1
+#define LV_FONT_MONTSERRAT_14 0
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_28 1

@@ -57,6 +57,11 @@ static void setDot(lv_obj_t* d, bool ok) {
 static lv_obj_t *lblTime, *lblDate, *lblTemp, *lblWxDesc, *lblWxCity, *lblWxMore, *lblSun;
 static lv_obj_t *skyCard, *skyImg, *boxT, *boxW, *boxF, *lblTempC, *lblWindT, *lblWindDir, *lblWindVal, *lblWindU;
 static const int IC_W = 26, IC_H = 22;
+// Hava karti paleti (ev-lamba ekranindan farkli): pastel pembe / lavanta / nane + soluk sari "bugun"; koyu yari saydam zemin
+#define WX_TEMP  lv_color_hex(0xF4A6C8)
+#define WX_WIND  lv_color_hex(0xB9A6F4)
+#define WX_FC    lv_color_hex(0xA6F4D0)
+#define WX_TODAY lv_color_hex(0xF4E3A6)
 static lv_obj_t *fcCol[7], *fcDay[7], *fcTmp[7], *fcIcon[7];
 static uint8_t* fcBuf[7];
 static int fcN = 0, fcCode[7], fcMax[7], fcMin[7];
@@ -64,7 +69,7 @@ static uint32_t fcSig = 0;
 static void drawMiniIcon(lv_obj_t* cv, int code, bool past);
 static lv_image_dsc_t skyDsc;
 static int skyCardW = 0;
-static lv_obj_t *cardAlert, *lblAlertTitle, *lblAlertDetail, *lblNews;
+static lv_obj_t *cardAlert, *lblAlertTitle, *lblAlertDetail, *lblNews;  // lblNews: alttaki kayan yazi
 static String alertId;
 static String lastNews;
 
@@ -108,10 +113,10 @@ static void buildHome() {
   lv_obj_remove_flag(skyCard, LV_OBJ_FLAG_SCROLLABLE);
   skyDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
   skyDsc.header.cf = LV_COLOR_FORMAT_RGB565;
-  skyDsc.header.w = SKY_W;
-  skyDsc.header.h = SKY_H;
-  skyDsc.header.stride = SKY_W * 2;
-  skyDsc.data_size = SKY_W * SKY_H * 2;
+  skyDsc.header.w = SKY_BW;
+  skyDsc.header.h = SKY_BH;
+  skyDsc.header.stride = SKY_BW * 2;
+  skyDsc.data_size = SKY_BW * SKY_BH * 2;
   skyDsc.data = (const uint8_t*)skyRGB565();
   skyImg = lv_image_create(skyCard);
   lv_image_set_src(skyImg, &skyDsc);
@@ -120,28 +125,30 @@ static void buildHome() {
 
   auto box = [&](lv_color_t col) {
     lv_obj_t* o = lv_obj_create(skyCard);
-    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(o, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_30, 0);
     lv_obj_set_style_border_color(o, col, 0);
     lv_obj_set_style_border_width(o, 2, 0);
     lv_obj_set_style_pad_all(o, 0, 0);
     lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
     return o;
   };
-  boxT = box(C_ORANGE);
+  boxT = box(WX_TEMP);
   lblWxDesc = uiLabel(boxT, "Hava durumu yükleniyor…", &noto28, C_TEXT);
-  lblTemp = uiLabel(boxT, "--", &lv_font_montserrat_48, C_ORANGE);
-  lblTempC = uiLabel(boxT, "°C", &noto28, C_ORANGE);
-  boxW = box(C_CYAN);
+  lblTemp = uiLabel(boxT, "--", &lv_font_montserrat_48, WX_TEMP);
+  lblTempC = uiLabel(boxT, "°C", &noto28, WX_TEMP);
+  boxW = box(WX_WIND);
   lblWindT = uiLabel(boxW, "RÜZGAR", &noto20, C_DIM);
   lblWindDir = uiLabel(boxW, "", &noto28, C_TEXT);
-  lblWindVal = uiLabel(boxW, "--", &lv_font_montserrat_48, C_CYAN);
-  lblWindU = uiLabel(boxW, "km/s", &noto28, C_CYAN);
-  boxF = box(C_DIM);
+  lblWindVal = uiLabel(boxW, "--", &lv_font_montserrat_48, WX_WIND);
+  lblWindU = uiLabel(boxW, "km/s", &noto28, WX_WIND);
+  boxF = box(WX_FC);
   for (int i = 0; i < 7; i++) {
-    fcCol[i] = box(C_ORANGE);
+    fcCol[i] = box(WX_TODAY);
+    lv_obj_set_style_bg_opa(fcCol[i], LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_opa(fcCol[i], LV_OPA_TRANSP, 0);  // yalniz bugun cerceveli
     fcDay[i] = uiLabel(fcCol[i], "", &noto16, C_TEXT);
-    fcTmp[i] = uiLabel(fcCol[i], "", &noto16, C_CYAN);
+    fcTmp[i] = uiLabel(fcCol[i], "", &noto16, WX_FC);
     fcBuf[i] = (uint8_t*)heap_caps_calloc(IC_W * IC_H, 4, MALLOC_CAP_SPIRAM);
     fcIcon[i] = lv_canvas_create(fcCol[i]);
     lv_canvas_set_buffer(fcIcon[i], fcBuf[i], IC_W, IC_H, LV_COLOR_FORMAT_ARGB8888);
@@ -164,11 +171,6 @@ static void buildHome() {
   uiBtn(cardAlert, "Anladım", false, onAlertAck);
   lv_obj_add_flag(cardAlert, LV_OBJ_FLAG_HIDDEN);
 
-  lv_obj_t* nc = uiCard(tabHome);
-  uiLabel(nc, "Dünya haberleri", &noto16, C_DIM);
-  lblNews = uiLabel(nc, "Haberler yükleniyor…", &noto20, C_TEXT);
-  lv_obj_set_width(lblNews, LV_PCT(100));
-  lv_label_set_long_mode(lblNews, LV_LABEL_LONG_WRAP);
 }
 
 static void tickHome() {
@@ -225,10 +227,10 @@ static void tickHome() {
         if (!has) continue;
         bool today = i == 1, past = i == 0;
         uiSetText(fcDay[i], todayW < 0 ? "--" : (today ? "BUGÜN" : DAYS[(todayW + i + 6) % 7]));
-        lv_obj_set_style_text_color(fcDay[i], today ? C_ORANGE : past ? C_DIM : C_TEXT, 0);
+        lv_obj_set_style_text_color(fcDay[i], today ? WX_TODAY : past ? C_DIM : C_TEXT, 0);
         snprintf(buf, sizeof(buf), "%d/%d", mx[i], mn[i]);
         uiSetText(fcTmp[i], buf);
-        lv_obj_set_style_text_color(fcTmp[i], past ? C_DIM : C_CYAN, 0);
+        lv_obj_set_style_text_color(fcTmp[i], past ? C_DIM : WX_FC, 0);
         lv_obj_set_style_border_opa(fcCol[i], today ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
         drawMiniIcon(fcIcon[i], c[i], past);
       }
@@ -252,30 +254,17 @@ static void tickHome() {
     }
   }
 
-  // haber
+  // haber: tam genislik kayan yazi (tüm başlıklar, kesintisiz)
   String news;
   if (takeMutex(newsMutex)) { news = NEWS_TICKER_TEXT; xSemaphoreGive(newsMutex); }
-  if (news.length()) {
-    // başlıklar "     +++     " ile ayrılı; sayfa başına 4 başlık, 12 sn'de bir sonraki sayfa
-    static const char* SEP = "     +++     ";
-    int count = 1;
-    for (int p = news.indexOf(SEP); p >= 0; p = news.indexOf(SEP, p + 1)) count++;
-    const int PER = 4;
-    int pages = (count + PER - 1) / PER, base = ((millis() / 12000) % pages) * PER;
-    String txt;
-    int start = 0;
-    for (int k = 0; k < count; k++) {
-      int end = news.indexOf(SEP, start);
-      String one = end < 0 ? news.substring(start) : news.substring(start, end);
-      if (k >= base && k < base + PER) txt += String(txt.length() ? "\n" : "") + "- " + one;
-      if (end < 0) break;
-      start = end + strlen(SEP);
-    }
-    if (txt != lastNews) {
-      lastNews = txt;
-      lv_label_set_text(lblNews, txt.c_str());
-    }
-  }}
+  if (news.length() && news != lastNews && lblNews) {
+    lastNews = news;
+    lv_label_set_text(lblNews, news.c_str());
+    lv_obj_update_layout(lblNews);
+    int wpx = lv_text_get_width(news.c_str(), news.length(), &noto20, 0) + 200;  // dongu boslugu
+    lv_obj_set_style_anim_duration(lblNews, (uint32_t)wpx * 1000UL / 110, 0);   // ~110 px/sn
+  }
+}
 
 // ------------------------------------------------------------------ LAMBALAR
 struct CardRef { int dev; int relay; };
@@ -665,8 +654,9 @@ volatile int devTimerReq = -1;
 // ---- hava karti: yerlesim (sahne koordinatlari x olcek) ve mini ikonlar
 static void layoutSky(int w) {
   float sc = (w - 6) / (float)SKY_W;
+  if (w - 6 >= 640) { sc = 2.0f; lv_obj_set_width(skyCard, 646); }  // yatay: tam 1:1 (hizli, net)
   auto P = [&](float v) { return (int)(v * sc + 0.5f); };
-  lv_image_set_scale(skyImg, (int)(256 * sc));
+  lv_image_set_scale(skyImg, (int)(128 * sc));
   lv_obj_set_height(skyCard, P(SKY_H) + 6);
   auto place = [&](lv_obj_t* o, float x, float y, float ww, float hh) {
     lv_obj_set_pos(o, P(x), P(y));
@@ -721,7 +711,7 @@ static void drawMiniIcon(lv_obj_t* cv, int code, bool past) {
   lv_canvas_fill_bg(cv, lv_color_black(), LV_OPA_TRANSP);
   Ic g{cv};
   lv_color_t gray = lv_color_hex(0x969696);
-  lv_color_t sun = past ? gray : C_ORANGE, cloud = past ? gray : lv_color_white(), drop = past ? gray : C_CYAN;
+  lv_color_t sun = past ? gray : WX_TODAY, cloud = past ? gray : lv_color_hex(0xE6E0F8), drop = past ? gray : WX_WIND;
   int cx = IC_W / 2, cy = IC_H / 2;
   int sc = code < 0 ? 0 : code == 0 ? 1 : (code == 1 || code == 2) ? 2 : (code == 45 || code == 48) ? 4 : (code >= 51 && code <= 57) ? 5
          : ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) ? 5 : ((code >= 71 && code <= 77) || code == 85 || code == 86) ? 6 : code >= 95 ? 7 : 3;
@@ -781,8 +771,11 @@ lv_obj_t* hubUiCreate() {
   lv_obj_set_style_text_font(scr, &noto20, 0);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
+  lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_gap(scr, 0, 0);
   tv = lv_tabview_create(scr);
-  lv_obj_set_size(tv, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_width(tv, LV_PCT(100));
+  lv_obj_set_flex_grow(tv, 1);
   lv_obj_set_style_bg_color(tv, C_BG, 0);
   lv_obj_set_style_bg_opa(tv, LV_OPA_COVER, 0);
   lv_obj_t* bar = lv_tabview_get_tab_bar(tv);
@@ -816,6 +809,21 @@ lv_obj_t* hubUiCreate() {
     lv_obj_set_style_border_width(b, 3, LV_STATE_CHECKED);
     lv_obj_set_style_border_side(b, LV_BORDER_SIDE_FULL, LV_STATE_CHECKED);
   }
+  // Alt kayan yazi seridi (tum sekmelerde): dünya haberleri
+  lv_obj_t* tk = lv_obj_create(scr);
+  lv_obj_set_size(tk, LV_PCT(100), 40);
+  lv_obj_set_style_bg_color(tk, C_CARD, 0);
+  lv_obj_set_style_bg_opa(tk, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(tk, C_FRAME, 0);
+  lv_obj_set_style_border_width(tk, 3, 0);
+  lv_obj_set_style_radius(tk, 0, 0);
+  lv_obj_set_style_pad_hor(tk, 8, 0);
+  lv_obj_set_style_pad_ver(tk, 2, 0);
+  lv_obj_remove_flag(tk, LV_OBJ_FLAG_SCROLLABLE);
+  lblNews = uiLabel(tk, "Haberler yükleniyor…", &noto20, C_CYAN);
+  lv_obj_set_width(lblNews, LV_PCT(100));
+  lv_label_set_long_mode(lblNews, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_align(lblNews, LV_ALIGN_LEFT_MID, 0, 0);
   buildHome();
   buildLamps();
   buildFx();

@@ -7,7 +7,8 @@ constexpr int SKY_W = 320, SKY_H = 184;
 void skyInit();                         // tamponlar (LVGL hazirken, bir kez)
 void skyStep();                         // hava+saate gore bir kare ilerlet ve ciz
 void skyStepIfStale(uint32_t maxAgeMs); // web icin: kare eskiyse yenile
-const uint16_t* skyRGB565();            // SKY_W*SKY_H RGB565 (LVGL yerel bayt sirasi)
+constexpr int SKY_BW = SKY_W * 2, SKY_BH = SKY_H * 2;
+const uint16_t* skyRGB565();            // SKY_BW*SKY_BH RGB565 (2x bilinear buyutulmus, LVGL yerel bayt sirasi)
 String skyDemoLabel();                  // demo acikken "DEMO 13:20" gibi, degilse bos
 void startSkyDemo();                    // 24 saat ~2 dk
 void startWeatherDemo();                // tum hava tipleri 8'er sn
