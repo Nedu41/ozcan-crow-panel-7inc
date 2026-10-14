@@ -19,7 +19,7 @@ static void jobTask(void*) {
   }
 }
 
-static lv_obj_t *dlg, *title, *relBtn[2], *rl[4], *dayBtn[7], *riseBtn, *setBtn;
+static lv_obj_t *dlg, *title, *relBtn[MAX_RELAYS], *rl[4], *dayBtn[7], *riseBtn, *setBtn;
 static int cur[2];  // seçili cihaz/röle
 static int tDev = -1, tRelay = 1, tDays = 127, tRise = 0, tSet = 0;
 static char tIp[20], tName[40];
@@ -50,7 +50,7 @@ static void loadValues() {
   lv_roller_set_selected(rl[2], constrain(eh, 0, 23), LV_ANIM_OFF);
   lv_roller_set_selected(rl[3], constrain(em, 0, 59), LV_ANIM_OFF);
   for (int i = 0; i < 7; i++) uiBtnOn(dayBtn[i], tDays & (1 << i), C_CYAN);
-  for (int r = 0; r < 2; r++) uiBtnOn(relBtn[r], tRelay == r + 1, C_ORANGE);
+  for (int r = 0; r < MAX_RELAYS; r++) uiBtnOn(relBtn[r], tRelay == r + 1, C_ORANGE);
   char b[40];
   snprintf(b, sizeof(b), "Gündoğumu: %s", ACT_TXT[tRise]);
   lv_label_set_text(uiBtnLabel(riseBtn), b);
@@ -149,7 +149,7 @@ static void build() {
 
   lv_obj_t* r = flexRow(c);
   uiLabel(r, "Röle", &noto20, C_DIM);
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < MAX_RELAYS; i++) {
     char b[8];
     snprintf(b, sizeof(b), "R%d", i + 1);
     relBtn[i] = uiBtn(r, b, false, nullptr, 80, 48);
@@ -191,6 +191,10 @@ void uiTimerOpen(int devIdx) {
   strlcpy(tIp, (const char*)(arr[devIdx]["ip"] | ""), sizeof(tIp));
   strlcpy(tName, (const char*)(arr[devIdx]["name"] | ""), sizeof(tName));
   tRelay = 1;
+  int rc = deviceRelayCount(String(tName));
+  for (int i = 0; i < MAX_RELAYS; i++) {  // cihazda olmayan roleleri gizle
+    if (i < rc) lv_obj_remove_flag(relBtn[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(relBtn[i], LV_OBJ_FLAG_HIDDEN);
+  }
   char b[80];
   snprintf(b, sizeof(b), "%s - Zamanlayıcı", tName);
   lv_label_set_text(title, b);

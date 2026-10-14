@@ -179,7 +179,7 @@ static bool pushFresh(const String& name) {
 // Bekleyen push paketlerini isler; durum degistiyse true. listChanged: IP guncellendi.
 static bool handleStatusPushes(bool& listChanged) {
   bool updated = false;
-  static char buf[1024];
+  static char buf[1472];  // 4 roleli dugumun /status JSON'u ~810 bayt; UDP MTU siniri
   while (pushRx.parsePacket() > 0) {
     int len = pushRx.read(buf, sizeof(buf) - 1);
     if (len <= 0) continue;

@@ -489,8 +489,8 @@ void proxyWorkerTask(void *pvParameters) {
         if (ok && xSemaphoreTake(statusMutex, MUTEX_TIMEOUT) == pdTRUE) {
           JsonObject st = CURRENT_STATUS_DOC[devName].as<JsonObject>();
           if (!st.isNull()) {
-            st[job.relay == 1 ? "r1_state" : "r2_state"] = action == "on" ? "ON" : "OFF";
-            st[job.relay == 1 ? "relay_1" : "relay_2"] = action == "on" ? 1 : 0;
+            st[String("r") + job.relay + "_state"] = action == "on" ? "ON" : "OFF";
+            st[String("relay_") + job.relay] = action == "on" ? 1 : 0;
           }
           xSemaphoreGive(statusMutex);
         }

@@ -18,6 +18,8 @@ extern DynamicJsonDocument doc;
 // Cihazlardan okunan anlik durum (isim -> /status JSON)
 extern StaticJsonDocument<4096> CURRENT_STATUS_DOC;
 extern SemaphoreHandle_t statusMutex;
+// Cihazin role sayisi (status "relays"; eski/yanitsiz cihaz = 2), 1..MAX_RELAYS
+int deviceRelayCount(const String& name);
 
 // Zamanlayici + gundogumu/batimi ayarlari
 extern StaticJsonDocument<2048> SCHEDULE_CONFIG_DOC;

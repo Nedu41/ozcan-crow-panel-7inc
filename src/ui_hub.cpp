@@ -345,13 +345,13 @@ static void tickHome() {
 
 // ------------------------------------------------------------------ LAMBALAR
 struct CardRef { int dev; int relay; };
-static CardRef refs[MAX_DEVICES][2];
+static CardRef refs[MAX_DEVICES][MAX_RELAYS];
 static lv_obj_t* lampBox;
 static lv_obj_t* lampInfo;
 static lv_obj_t* lampDot[MAX_DEVICES];
-static lv_obj_t* lampBtn[MAX_DEVICES][2];
+static lv_obj_t* lampBtn[MAX_DEVICES][MAX_RELAYS];
 static lv_obj_t* lampWifi[MAX_DEVICES];
-static lv_obj_t* lampSched[MAX_DEVICES][2];
+static lv_obj_t* lampSched[MAX_DEVICES][MAX_RELAYS];
 static int tmrIdx[MAX_DEVICES];
 static void onTimer(lv_event_t* e) { uiTimerOpen(*(int*)lv_event_get_user_data(e)); }
 static String lampSig;
@@ -369,8 +369,8 @@ static void ctlTask(void*) {
     if (ok && xSemaphoreTake(statusMutex, MUTEX_TIMEOUT) == pdTRUE) {
       JsonObject st = CURRENT_STATUS_DOC[c.name].as<JsonObject>();
       if (!st.isNull()) {
-        st[c.relay == 1 ? "r1_state" : "r2_state"] = c.on ? "ON" : "OFF";
-        st[c.relay == 1 ? "relay_1" : "relay_2"] = c.on ? 1 : 0;
+        st[String("r") + c.relay + "_state"] = c.on ? "ON" : "OFF";
+        st[String("relay_") + c.relay] = c.on ? 1 : 0;
       }
       xSemaphoreGive(statusMutex);
     }
@@ -421,7 +421,8 @@ static void tickLamps() {
   int n = 0;
   for (JsonObject d : arr) {
     if (n >= MAX_DEVICES) break;
-    sig += String((const char*)(d["name"] | "")) + "|";
+    String nm = d["name"] | "";
+    sig += nm + "#" + String(deviceRelayCount(nm)) + "|";  // role sayisi degisirse kartlar yeniden kurulur
     n++;
   }
   if (sig != lampSig) {  // cihaz listesi değişti: kartları yeniden kur
@@ -450,12 +451,14 @@ static void tickLamps() {
       lv_obj_set_style_text_font(uiBtnLabel(tb), &noto16, 0);
       lv_obj_add_event_cb(tb, onTimer, LV_EVENT_CLICKED, &tmrIdx[i]);
       lampWifi[i] = uiLabel(card, "", &noto16, C_DIM);
-      lv_obj_t* rr = uiRow(card);  // iki role yan yana
+      int rc = deviceRelayCount(String((const char*)(d["name"] | "")));
+      lv_obj_t* rr = uiRow(card);  // 1-2 role yan yana, 3-4 role 2x2
       lv_obj_set_style_pad_gap(rr, 4, 0);
-      for (int r = 0; r < MAX_RELAYS; r++) {
+      if (rc > 2) lv_obj_set_flex_flow(rr, LV_FLEX_FLOW_ROW_WRAP);
+      for (int r = 0; r < rc; r++) {
         refs[i][r] = {i, r + 1};
-        lampBtn[i][r] = uiBtn(rr, "", false, nullptr, LV_SIZE_CONTENT, 42);
-        lv_obj_set_flex_grow(lampBtn[i][r], 1);
+        lampBtn[i][r] = uiBtn(rr, "", false, nullptr, rc > 2 ? LV_PCT(48) : LV_SIZE_CONTENT, 42);
+        if (rc <= 2) lv_obj_set_flex_grow(lampBtn[i][r], 1);
         lv_obj_set_style_pad_hor(lampBtn[i][r], 4, 0);
         lv_obj_set_style_text_font(uiBtnLabel(lampBtn[i][r]), &noto16, 0);
         lv_obj_add_event_cb(lampBtn[i][r], onRelay, LV_EVENT_CLICKED, &refs[i][r]);
@@ -493,10 +496,10 @@ static void tickLamps() {
       }
       uiSetText(lampWifi[i], w);
     }
-    char sched[160] = "";
+    char sched[256] = "";
     for (int r = 0; r < MAX_RELAYS; r++) {
       if (!lampBtn[i][r]) continue;
-      String s = st.isNull() ? "OFFLINE" : String((const char*)(st[r == 0 ? "r1_state" : "r2_state"] | "OFFLINE"));
+      String s = st.isNull() ? "OFFLINE" : String((const char*)(st[String("r") + (r + 1) + "_state"] | "OFFLINE"));
       bool on = s == "ON";
       lv_obj_t* l = uiBtnLabel(lampBtn[i][r]);
       char bl[24];

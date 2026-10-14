@@ -38,7 +38,7 @@ const unsigned long ALERT_TICKER_MS = 3600000UL;      // alt yazida (haber bandi
 
 // ---- Cihaz/role limitleri ----
 #define MAX_DEVICES 10
-#define MAX_RELAYS 2
+#define MAX_RELAYS 4  // LC Technology 4 kanal modulu icin; role sayisi cihazdan (status "relays") gelir, yoksa 2
 
 // ---- LittleFS dosyalari ----
 #define DEVICES_FILE "/devices.json"

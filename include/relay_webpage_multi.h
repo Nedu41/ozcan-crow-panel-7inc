@@ -647,6 +647,7 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
 
 <script>
 let DEVICES = [], STATUS = {}, CURRENT_WEATHER = {}, WEATHER_CONFIG = {};
+const RELAY_COUNT = {};  // cihaz adi -> role sayisi (son bilinen)
 // Zamanlayici ayarlarinin TEK kaynagi HUB (eskiden tarayicinin localStorage'i -
 // baska telefonda varsayilan degerler gorunuyordu)
 let SCHEDULE = {};
@@ -877,22 +878,17 @@ function renderControl() {
                 📶 WiFi: Yükleniyor...
             </div>
 
+            ${[1, 2, 3, 4].map(r => `<div id="rw${r}_${i}" style="${r > 2 ? 'display:none' : ''}">
             <div class="relay-row">
-                <div class="relay-label">R1</div>
-                <button class="btn off" id="b1_${i}" onclick="toggle(${i},1)">...</button>
+                <div class="relay-label">R${r}</div>
+                <button class="btn off" id="b${r}_${i}" onclick="toggle(${i},${r})">...</button>
             </div>
-            <div class="sched-info" id="p1_${i}"></div>
-
-            <div class="relay-row">
-                <div class="relay-label">R2</div>
-                <button class="btn off" id="b2_${i}" onclick="toggle(${i},2)">...</button>
-            </div>
-            <div class="sched-info" id="p2_${i}"></div>
+            <div class="sched-info" id="p${r}_${i}"></div>
+            </div>`).join('')}
 
             <div class="section" id="sec_${i}">
                 <div style="display:flex;gap:10px;justify-content:center;margin-bottom:10px;">
-                    <label><input type="radio" name="r${i}" value="1" checked onchange="loadProgValues(${i})"> Röle 1</label>
-                    <label><input type="radio" name="r${i}" value="2" onchange="loadProgValues(${i})"> Röle 2</label>
+                    ${[1, 2, 3, 4].map(r => `<label id="rl${r}_${i}" style="${r > 2 ? 'display:none' : ''}"><input type="radio" name="r${i}" value="${r}" ${r === 1 ? 'checked' : ''} onchange="loadProgValues(${i})"> Röle ${r}</label>`).join('')}
                 </div>
                 
                 <div style="display:flex;gap:5px;align-items:center">
@@ -981,8 +977,15 @@ function applyDomUpdates() {
                 }
             }
 
-            // Röle Durumları
-            for(let r = 1; r <= 2; r++) {
+            // Röle Durumları (cihazin role sayisi: status "relays", cevrimdisiyken son bilinen, yoksa 2)
+            if (s.relays) RELAY_COUNT[dev.name] = s.relays;
+            const rcnt = RELAY_COUNT[dev.name] || 2;
+            for(let r = 1; r <= 4; r++) {
+                const rw = document.getElementById("rw"+r+"_"+i);
+                if (rw) rw.style.display = r <= rcnt ? "" : "none";
+                const rlb = document.getElementById("rl"+r+"_"+i);
+                if (rlb) rlb.style.display = r <= rcnt ? "" : "none";
+                if (r > rcnt) continue;
                 const state = s[`r${r}_state`] || "OFFLINE";
                 const btn = document.getElementById("b"+r+"_"+i);
                 const prog = document.getElementById("p"+r+"_"+i);
@@ -2086,7 +2089,7 @@ function refreshHome() {
         let l = "";
         DEVICES.forEach((d, i) => {
             const st = STATUS[d.name] || {};
-            [1, 2].forEach(r => {
+            [1, 2, 3, 4].forEach(r => {
                 const s = st["r" + r + "_state"];
                 if (s === undefined) return;
                 const on = s === "ON", off = s === "OFFLINE" || s === "ERR";
