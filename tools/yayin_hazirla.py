@@ -24,7 +24,7 @@ DEGISTIR = [  # (regex, yerine) — yalnizca metin dosyalari
     (r"\(kaynak: [A-Za-z]:\\[^)]*\)", "(kaynak: ev-lamba projesi)"),
 ]
 # Taramada aranan kisisel kaliplar (ikili dosyalarda da)
-KALIP = [rb'Emiliya', rb'EncanA01', rb'durmus', rb'nejat', rb'Nejat', rb'C:/Users', rb'C:\\Users', rb'D:/Kodlar', rb'D:\\Kodlar',
+KALIP = [rb'Emiliya', rb'EncanA01', rb'durmus', rb'nejat', rb'Nejat', rb'C:/Users', rb'C:\\Users', rb'D:/Kodlar', rb'D:\\Kodlar', rb'C:/Kodlar', rb'C:\\Kodlar',
          rb'[0-9]{8,10}:[A-Za-z0-9_-]{30,}', rb'AIza[0-9A-Za-z_-]{25,}', rb'6032215718', rb'Bahce_kapi', rb'Kalburcu']
 
 
