@@ -1195,6 +1195,7 @@ function renderSettings() {
                     <button class="btn warning" onclick="restartHub()" title="Hub'ı yeniden başlat">🔄 Yeniden Başlat</button>
                     <button class="btn" onclick="scanDevices()" title="Ağdaki ESP01 cihazlarını mDNS ile tara" style="background:#2196F3">🔍 Cihaz Tara</button>
                     <button class="btn add-device-btn" onclick="add()" title="Yeni cihaz ekle">➕ Yeni Cihaz</button>
+                    <a class="btn" href="https://nedu41.github.io/ev-lamba/yukleyici/" target="_blank" rel="noopener" title="Yeni cihaza USB ile firmware yükle (Chrome/Edge)" style="background:#7a4fd0;text-decoration:none;display:inline-block">⬇️ Firmware Yükle</a>
                 </div>
             </div>
 
