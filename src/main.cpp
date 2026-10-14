@@ -1,4 +1,4 @@
-// CrowPanel HUB: ev-lamba "Merkezi HUB" + yapay zeka efektleri + LVGL dokunmatik arayüz.
+// CrowPanel HUB: ev-lamba "Merkezi HUB" + LVGL dokunmatik arayüz.
 // Akış: guiInit -> uiStart (kayıtlı ağlara bağlan / dokunmatik WiFi kurulumu) -> hubOnWifiUp (hizmetler).
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>

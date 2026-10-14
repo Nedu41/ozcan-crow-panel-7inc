@@ -633,7 +633,6 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
 <div class="nav">
   <a href="/" id="nav1" onclick="route('/');return false;">Ana</a>
   <a href="/lamps" id="nav7" onclick="route('/lamps');return false;">Lambalar</a>
-  <a href="/efekt" id="nav8" onclick="route('/efekt');return false;">Efekt</a>
   <a href="/weather" id="nav3" onclick="route('/weather');return false;">Oto-Hava</a>
   <a href="/settings" id="nav2" onclick="route('/settings');return false;">Cihazlar</a>
   <a href="/sistem" id="nav9" onclick="route('/sistem');return false;">Sistem</a>
@@ -1613,21 +1612,6 @@ function confirmScanDevice(idx) {
     postDevices(arr, `✓ ${name} eklendi`).then(() => renderSettings());
 }
 
-function loadAiKey() {
-    fetch("/api/aikey").then(r => r.json()).then(j => {
-        const e = document.getElementById("aiKeyState");
-        if (e) e.textContent = j.var ? "✓ Anahtar kayıtlı" : "Anahtar yok";
-    }).catch(() => {});
-}
-function saveAiKey() {
-    const v = document.getElementById("aiKey").value.trim();
-    if (!v) { toast("Anahtar boş", true); return; }
-    fetch("/api/aikey?set=" + encodeURIComponent(v)).then(() => {
-        document.getElementById("aiKey").value = "";
-        toast("✓ Anahtar kaydedildi"); loadAiKey();
-    }).catch(() => toast("✗ Kaydedilemedi", true));
-}
-
 function restartHub() {
 
         fetch("/restart_hub");
@@ -2074,8 +2058,7 @@ function renderHome() {
         <div id="hWx2" style="position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);padding:6px 12px;font-size:.9em"></div>
     </div>
     <div class="settings-container"><div style="color:#9a9aae;font-size:.85em">Dünya haberleri</div><div id="hNews" style="margin-top:6px">Haberler yükleniyor…</div></div>
-    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Lambalar</div><div id="hLamps"></div></div>
-    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Yapay zeka efektleri</div><div id="hFx"></div></div>`;
+    <div class="settings-container"><div style="color:#9a9aae;font-size:.85em;margin-bottom:6px">Lambalar</div><div id="hLamps"></div></div>`;
     refreshHome();
 }
 function refreshHome() {
@@ -2112,12 +2095,6 @@ function refreshHome() {
         set("hLamps", l || "Henüz cihaz yok.");
     }).catch(() => {});
     fetch("/api/news").then(r => r.json()).then(j => { NEWS_ITEMS = j.items || []; showNews(); }).catch(() => {});
-    fetch("/api/efekt/durum").then(r => r.json()).then(j => {
-        let h = j.ok ? "" : `<div style="color:#ff9a9a;margin-bottom:6px">PC köprüsü yok (efekt_koprusu.py açık olmalı)</div>`;
-        (j.liste || []).forEach(ad => h += `<button class="btn off" style="margin:3px" ${j.ok ? '' : 'disabled'} onclick="fxPlay('${escHtml(ad)}')">${escHtml(ad)}</button>`);
-        h += ` <a href="/efekt" onclick="route('/efekt');return false;" style="color:#7fe0dc">Tümü / yeni efekt</a>`;
-        set("hFx", h);
-    }).catch(() => {});
 }
 function skyLoop() {
     const im = document.getElementById("hSky");
@@ -2134,73 +2111,6 @@ function toggleHome(i, r) {
     const dev = DEVICES[i], st = STATUS[dev.name] || {};
     const action = st["r" + r + "_state"] === "ON" ? "off" : "on";
     sendControl(dev.ip, r, action).then(() => setTimeout(refreshHome, 600)).catch(() => toast("✗ " + dev.name + ": cihaz yanıt vermiyor", true));
-}
-
-// ===================== EFEKT SAYFASI =====================
-function fxPlay(ad) { fetch("/api/efekt/oynat?ad=" + encodeURIComponent(ad)).then(() => toast("▶ " + ad + " ekranda açıldı")); }
-function renderEfekt() {
-    document.getElementById("content").innerHTML = `
-    <div class="settings-container">
-        <h3>🎞️ Yapay zeka efektleri</h3>
-        <div id="fxStat" style="margin-bottom:8px">…</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <input type="text" id="fxPrompt" class="compact-input" style="flex:1;min-width:200px" placeholder="Nasıl bir efekt? (ör. yağmurda neon şehir)">
-            <button class="btn" onclick="fxNew()">Üret ve ekranda göster</button>
-        </div>
-        <div style="color:#9a9aae;font-size:.8em;margin-top:4px">Efekt cihazın ekranında oynar (ekrana dokununca kapanır). Üretim ~30 sn sürebilir.</div>
-    </div>
-    <div class="settings-container"><h3>Kayıtlı efektler</h3><div id="fxList"></div>
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-            <input type="text" id="fxSaveName" class="compact-input" placeholder="Son efektin adı">
-            <button class="btn" onclick="fxSave()">Son efekti kaydet</button>
-        </div>
-    </div>
-    <div class="settings-container"><h3>Ayar</h3>
-        <label>Hız <span id="fxHizL">1.0x</span></label><input type="range" id="fxHiz" min="10" max="400" value="100" oninput="fxTune()" style="width:100%">
-        <label>Işık <span id="fxIsikL">%100</span></label><input type="range" id="fxIsik" min="10" max="200" value="100" oninput="fxTune()" style="width:100%">
-        <button class="btn off" onclick="fetch('/api/efekt/durdur')">Durdur</button>
-    </div>
-    <div class="settings-container"><h3>Gemini API anahtarı</h3>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <input type="password" id="aiKey" class="compact-input" placeholder="API anahtarı yapıştırın">
-            <button class="btn" onclick="saveAiKey()">Kaydet</button>
-            <span id="aiKeyState">…</span>
-        </div>
-        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7fe0dc">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
-    </div>`;
-    loadAiKey(); refreshEfekt();
-}
-function refreshEfekt() {
-    if (location.pathname !== "/efekt") return;
-    fetch("/api/efekt/durum").then(r => r.json()).then(j => {
-        const d = {bos: "boşta", uretiyor: "efekt üretiliyor…", oynuyor: "oynuyor" + (j.ad ? ": " + j.ad : ""), hata: "son üretim başarısız"}[j.durum] || "";
-        const s = document.getElementById("fxStat");
-        if (s) s.innerHTML = j.ok ? `<span style="color:#8fe0a0">● Köprü bağlı</span> — ${d}` : `<span style="color:#ff9a9a">● PC köprüsü yok</span> (bilgisayarda efekt_koprusu.py açık olmalı)`;
-        const l = document.getElementById("fxList");
-        if (l) l.innerHTML = (j.liste || []).map(ad => `<span style="display:inline-block;margin:3px"><button class="btn off" onclick="fxPlay('${escHtml(ad)}')">${escHtml(ad)}</button><button class="btn" style="background:#442" title="Sil" onclick="fxDel('${escHtml(ad)}')">✕</button></span>`).join("") || "Henüz kayıtlı efekt yok";
-    }).catch(() => {});
-}
-function fxNew() {
-    const p = document.getElementById("fxPrompt").value.trim();
-    if (!p) { toast("Efekt cümlesi boş", true); return; }
-    fetch("/api/efekt/uret?p=" + encodeURIComponent(p)).then(() => toast("⏳ Üretiliyor, ekranda gösterilecek"));
-}
-function fxSave() {
-    const n = document.getElementById("fxSaveName").value.trim();
-    if (!n) { toast("Ad girin", true); return; }
-    fetch("/api/efekt/kaydet?ad=" + encodeURIComponent(n)).then(() => { toast("✓ Kaydedildi"); setTimeout(refreshEfekt, 800); });
-}
-function fxDel(ad) {
-    if (!confirm('"' + ad + '" silinsin mi?')) return;
-    fetch("/api/efekt/sil?ad=" + encodeURIComponent(ad)).then(() => setTimeout(refreshEfekt, 800));
-}
-let fxTuneT = null;
-function fxTune() {
-    const h = document.getElementById("fxHiz").value / 100, i = document.getElementById("fxIsik").value / 100;
-    document.getElementById("fxHizL").textContent = h.toFixed(1) + "x";
-    document.getElementById("fxIsikL").textContent = "%" + Math.round(i * 100);
-    clearTimeout(fxTuneT);
-    fxTuneT = setTimeout(() => fetch("/api/efekt/ayar?hiz=" + h + "&isik=" + i), 250);
 }
 
 // ===================== SİSTEM SAYFASI (ekrandaki Ayar gibi) =====================
@@ -2242,8 +2152,6 @@ function renderSistem() {
     <div class="settings-container"><h3>Hızlı bağlantılar</h3>
         <button class="btn" onclick="route('/wifi')">WiFi ağları</button>
         <button class="btn" onclick="route('/weather')">Hava konumu</button>
-        <button class="btn" onclick="route('/efekt')">Yapay zeka anahtarı</button>
-        <div style="margin-top:6px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#a070ff">Ücretsiz anahtar al: aistudio.google.com/apikey</a></div>
         <button class="btn warning" onclick="restartHub()">Yeniden başlat</button>
     </div>`;
     fetch("/api/sistem").then(r => r.json()).then(j => {
@@ -2327,8 +2235,6 @@ function navigate() {
         renderNotes();
     } else if(p === "/wifi") {
         renderWifi();
-    } else if(p === "/efekt") {
-        renderEfekt();
     } else if(p === "/sistem") {
         renderSistem();
     } else if(p === "/device") {
@@ -2354,7 +2260,6 @@ window.onload = function() {
     setInterval(() => { if (location.pathname === '/log') renderEvents(); }, 10000);
     setInterval(refreshHome, 20000);
     skyLoop();
-        setInterval(refreshEfekt, 3000);
 };
 </script>
 </body>

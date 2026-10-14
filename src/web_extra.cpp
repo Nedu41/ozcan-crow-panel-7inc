@@ -5,7 +5,6 @@
 
 #include "app_state.h"
 #include "config.h"
-#include "efekt.h"
 #include "guncelle.h"
 #include "sky.h"
 #include "telegram.h"
@@ -69,7 +68,6 @@ void webExtraRoutes() {
     d["land"] = uiIsLandscape();
     d["tg"] = telegramConfigured();
     d["tg_chat"] = telegramChatId();
-    d["ai"] = efektAnahtarVar();
     d["fw"] = FW_VERSION;
     d["ssid"] = WiFi.SSID();
     d["rssi"] = WiFi.RSSI();

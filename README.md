@@ -1,11 +1,10 @@
 # CrowPanel 7" HUB
 
-Elecrow **CrowPanel ESP32 7.0" (DIS08070H, V3.0)** dokunmatik ekranı ile ev otomasyon merkezi: lamba/priz (röle) düğümlerini yönetir, hava durumu ve deprem/hava uyarılarını gösterir, PC köprüsü ile yapay zeka efektleri oynatır. Dokunmatik arayüz (LVGL) ve aynı özelliklerin web arayüzü vardır.
+Elecrow **CrowPanel ESP32 7.0" (DIS08070H, V3.0)** dokunmatik ekranı ile ev otomasyon merkezi: lamba/priz (röle) düğümlerini yönetir, hava durumu ve deprem/hava uyarılarını gösterir. Dokunmatik arayüz (LVGL) ve aynı özelliklerin web arayüzü vardır.
 
 ## Özellikler
 - **Ana sayfa:** saat, canlı gökyüzü animasyonu (hava durumuna göre), sıcaklık / nem / rüzgâr, 7 günlük tahmin, hava ve deprem uyarıları, kayan dünya haberleri.
 - **Lambalar:** ESP-01 / ESP8266 / ESP32 röle düğümleri (mDNS ile bulunur), açma/kapama, zamanlayıcı (saat, gün, gün doğumu/batımı), bulut ve karanlık otomasyonu.
-- **Efekt:** yapay zeka ile üretilen ekran efektleri (PC'de çalışan köprü, Gemini API anahtarı gerekir).
 - **Ayar:** WiFi kurulumu (ekran klavyesi, kayıtlı ağlar), parlaklık / kontrast / canlılık, Telegram uyarıları, hava konumu, yazılım güncelleme.
 - **Kablosuz güncelleme:** web'den `.bin` dosyası yükleme, GitHub release'inden indirme, PlatformIO OTA.
 

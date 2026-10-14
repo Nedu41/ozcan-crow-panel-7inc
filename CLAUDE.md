@@ -8,9 +8,8 @@ Elecrow CrowPanel 7" (ESP32-S3 dokunmatik ekran) ile **LedPanel-Pico kumandası*
 - Arayüz: koyu/gotik tema, siyah çerçeve, pastel renk; açık üstüne açık renk yok. Bkz. global CLAUDE.md tercihleri.
 - Commit sonuna: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. `src/secrets.h` commit'e girmez.
 
-## Yapay zeka efektleri (2026-10-13: LedPanel kumandası kaldırıldı)
-LedPanel istemcisi söküldü (flash için). Yerine **Efekt** sekmesi: PC'deki `araclar/efekt_koprusu.py` (HTTP :8767, anahtar `araclar/.kopru_anahtar`) efekt cümlesini Gemini'ye ürettirir, `frame(t,W,H)` numpy kodunu çalıştırır, kareleri **UDP 4048** ile cihaza yollar (10 bayt DDP başlığı + RGB565, 160x96 / dikeyde 96x160, cihazda 5x büyütülüp LVGL'siz doğrudan ekrana basılır). Köprü adresini cihaza kendisi bildirir (`/api/aibr`, NVS). Cihaz uçları: `/api/efekt` (boyut + alınan kare sayısı), `/api/aikey` (Gemini anahtarı, web Ayarlar'da da var). Gemini anahtarı cihazdan girilir (Ayar > Yapay zeka anahtarı, link: aistudio.google.com/apikey) ve köprüye iletilir.
-Ölçüm: UDP'de paketler arası <1 ms ise ESP32 paket kaybediyor (0,3 ms'de %78 kare kaybı); köprü 1 ms bekler (~17 fps). Eski `C:\Kodlar\LedPanel-Picoraclari_koprusu.py` :8766'da çalışabilir; çakışmasın diye bu köprü 8767. **Dezavantaj: PC açık ve aynı ağda olmalı** (Özcan abinin evinde PC olmayabilir).
+## Yapay zeka efektleri KALDIRILDI (2026-10-14)
+Efekt sekmesi (ekran+web), UDP alıcı (`efekt.cpp`), Gemini anahtarı ayarı, PC köprüsü (`efekt_koprusu.py`, `efektler/`) ve QR kodu (LV_USE_QRCODE=0) silindi; `-fno-access-control` bayrağı kalktı. Sekmeler: Ana / Lambalar / Ayar (Ayar artık indeks 2, `/dev/tab?i=2`). Eski kod git geçmişinde (`core3-esp-lcd` dalı ve 2026-10-13 öncesi commit'ler). Flash: ~1,81 MB / 1,97 MB (%92).
 
 ## Mimari karar (2026-10-12)
 CrowPanel, `C:\Kodlar\ev-lamba` (Merkezi HUB: ESP01 röle yönetimi, zamanlayıcı, hava, web, OTA, MQTT, Telegram) kodunu devralan **yeni HUB** olur; LedPanel kumandası da aynı cihazda. Eski ILI9341'li ESP32 emekli. ev-lamba'ya dokunma, yalnızca kaynak olarak oku/taşı. İlk sürüm ekranı: hava/saat ana ekranı; lamba ve LedPanel sayfaları sonraki adım.

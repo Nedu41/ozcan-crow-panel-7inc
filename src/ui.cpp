@@ -1,5 +1,5 @@
 // LVGL arayüzü: ekran sürücüsü bağlantısı + WiFi kurulum akışı + yardımcı pencereler.
-// HUB sayfaları (ana, lambalar, efekt, ayarlar): ui_hub.cpp
+// HUB sayfaları (ana, lambalar, ayarlar): ui_hub.cpp
 #include "ui.h"
 
 #include <Preferences.h>

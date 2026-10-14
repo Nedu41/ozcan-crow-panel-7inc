@@ -3,7 +3,6 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-#include "efekt.h"
 #include "sky.h"
 #include <vector>
 #include "app_state.h"
@@ -646,10 +645,8 @@ void setupWebServer() {
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
 
-  efektRoutes();
   webExtraRoutes();
   server.on("/lamps", AsyncWebRequestMethod::HTTP_GET, handleRoot);
-  server.on("/efekt", AsyncWebRequestMethod::HTTP_GET, handleRoot);
   server.on("/sistem", AsyncWebRequestMethod::HTTP_GET, handleRoot);
 
   // Uyarilar (hava/deprem): onay + teshis + deneme
