@@ -2263,7 +2263,7 @@ const HW_USAGE = [
     "Ekran ayarları ve güncelleme: web'de <b>Sistem</b> sekmesi.",
 ];
 const HW_CHANGELOG = [
-    ["7.5.0", "2026-10-20", ["Hatırlatma sekmesi (günde 1-6 kez, düzenleme)", "Mutfak sekmesi: yumurta zamanlayıcısı, hazır olunca uyarı bandı", "Haberlere Kocaeli", "Ses: kart üstü I2S hoparlör (uyarı, deprem, hatırlatma, mutfak)", "Gökyüzüne martılar ve maskot martı (geçiş, selam, tık tık, karışık, çarpma); Martı Demosu", "Gökyüzünün sağında rüzgâra göre sallanan ağaç"]],
+    ["7.5.0", "2026-10-20", ["Hatırlatma sekmesi (günde 1-6 kez, düzenleme)", "Mutfak sekmesi: yumurta zamanlayıcısı, hazır olunca uyarı bandı", "Haberlere Kocaeli", "Ses: kart üstü I2S hoparlör (uyarı, deprem, hatırlatma, mutfak)", "Gökyüzüne martılar ve maskot martı (geçiş, selam, tık tık, karışık, çarpma); Martı Demosu", "Gökyüzünün solunda rüzgâra göre sallanan ağaç, sert rüzgârda yapraklar savrulur", "Düzeltme: güneş batıştan ~45 dk önce tepenin arkasına giriyordu; akşam kızıllığı gerçeğe yakın sürer"]],
     ["7.4.0", "2026-10-20", ["Donanım sayfası: özellikler, kullanım, sürüm geçmişi, kart bilgisi, canlı durum"]],
     ["7.3.0", "2026-10-14", ["Yapay zeka efektleri kaldırıldı (flash %92)", "4 röleli düğüm desteği (2×2 lamba kartı, 4 röle zamanlayıcı)", "Cihazlar sayfasında Firmware Yükle bağlantısı"]],
     ["7.2.1", "2026-10-13", ["Röle düğümleri için 8 kart firmware'i ve hazır imajlar", "GitHub'dan güncelleme uçtan uca denendi", "Yayın imajlarından kişisel bilgiler temizlendi"]],

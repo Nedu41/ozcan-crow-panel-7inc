@@ -149,7 +149,7 @@ static SkyTime skyTime() {
   float rise = wv.sunrise.substring(0, 2).toInt() * 60 + wv.sunrise.substring(3, 5).toInt();
   float set = wv.sunset.substring(0, 2).toInt() * 60 + wv.sunset.substring(3, 5).toInt();
   if (set <= rise) return s;
-  const float PEAK = 50.0f, RATE = 0.2f, EVE_RATE = 0.5f;
+  const float PEAK = 50.0f, RATE = 0.2f, EVE_RATE = 0.25f;  // gercekte ~0,18 derece/dk; 0,5 kizilligi 2,5 kat hizli sonduruyordu
   s.valid = true;
   s.noonH = (rise + set) / 120.0f;
   if (now >= rise && now <= set) {
@@ -493,15 +493,20 @@ static void drawHalo(int cx, int cy, int r, int w, uint8_t col) {
 }
 
 // Gok cismi yayi: f=0 doguda ufukta, 0.5 en yuksekte, 1 batida ufukta
+// BUGFIX (2026-10-20): yay ufuk cizgisinde (HORIZON_Y) bitiyordu ama onunde 10-20 px tepe var -> gunes gercek
+// batistan ~45 dk once tepenin arkasina giriyordu (gun batimi 18:13, 17:53'te gunes yoktu). Yay artik o x'teki tepe
+// ustunde biter: gun dogumu/batiminda gunesin merkezi tepe cizgisinde.
+static int hillTop(int x) { return HORIZON_Y - hillH[constrain(x, 0, SKY_W - 1)]; }
 static void arcPos(float f, int& x, int& y) {
   x = 24 + (int)(f * (SKY_W - 48));
-  y = HORIZON_Y - (int)(sinf(PI * f) * (HORIZON_Y - ARC_TOP));
+  int base = hillTop(x);
+  y = base - (int)(sinf(PI * f) * (base - ARC_TOP));
 }
 
 static void sunPos(const SkyTime& st, int& x, int& y) {
   if (!st.valid) { x = 160; y = WIN_MID; return; }
   arcPos(st.dayFrac, x, y);
-  if (st.elev < 0) y = HORIZON_Y + (int)(-st.elev * 4);  // batmis: tepelerin arkasina iner
+  if (st.elev < 0) y = hillTop(x) + (int)(-st.elev * 4);  // batmis: tepelerin arkasina iner
 }
 
 // Ay: gunese gore evre kadar geride - yeni ay gunesle birlikte, dolunay gece
@@ -1066,37 +1071,81 @@ static void updateVisitor(bool allowed, float dt) {
   crackDraw();
 }
 
-// Sag kenarda agac (tepelerle ayni koyu siluet): ruzgar arttikca ruzgar altina egilir, daha hizli/genis sallanir,
-// yaprak kumeleri ayri ayri titrer. Govde boyunca egilme h^2 ile artar (dip sabit). ev-lamba ile ayni (onizleme: ev-lamba tools/agac_sim.py).
-static void drawTree(float dt, float t) {
+// Sol kenarda yakin plan agac (tepelerle ayni koyu siluet): dibi sahnenin altindan cikar, taci sol uste tasar.
+// Ruzgar arttikca ruzgar altina (saga) egilir, daha hizli/genis sallanir, tac tutamlari ayri titrer; ~27 km/s ustunde
+// yapraklar kopup saga savrulur. Govde egilmesi h^2 ile artar (dip sabit). Gunes dogarken (dogu = sol) agacin
+// arkasindan cikar: gunes tarafindaki kenara gunes renginde ince isik (arka isik) cizilir. Onizleme: ev-lamba tools/agac_sim.py.
+struct TreeLeaf { float x, y, vx, vy, ph; };
+static TreeLeaf trLeaf[30];
+static int trLeafN = 0;
+static float trLeafAcc = 0;
+static float trK = 0, trF = 0, trSw = 0, trT = 0;   // bu karenin ruzgar durumu (iki gecis ayni sekli cizsin)
+static float trCx[5], trCy[5];
+static const int8_t TR_CL[5][4] = {{80, 6, -6, 24}, {74, 26, 4, 18}, {76, -18, 2, 19}, {94, 14, -20, 19}, {92, -12, -22, 18}};
+// Agac sekli (ox, oy kaydirmasiyla, tek renk). Ayna: x'ler sol kenara gore (sola dogru eksi = saga dogru arti).
+static void treeShape(float ox, float oy, uint8_t c) {
+  const float k = trK, f = trF, sw = trSw, t = trT;
+  const float bx = 22 + ox, by = SKY_H + 4 + oy, H = 112;
+  auto X = [&](float h) { return bx + sw * H * h * h; };
+  auto Y = [&](float h) { return by - H * h; };
+  float px[12], py[12];
+  for (int i = 0; i < 6; i++) {
+    float h = i * 0.2f, hw = 9.0f - 6.5f * h;
+    px[i] = X(h) - hw; py[i] = Y(h);
+    px[11 - i] = X(h) + hw; py[11 - i] = Y(h);
+  }
+  mvPoly(px, py, 12, c);
+  for (int i = 0; i < 5; i++) {
+    float h = TR_CL[i][0] / 100.0f, fl = (0.8f + 3.5f * k) * sinf(t * f * 1.7f * 6.283f + i * 1.9f);
+    float cx = X(h) + TR_CL[i][1] + sw * 14 * h + fl, cy = Y(h) + TR_CL[i][2] + 0.4f * fl;
+    if (abs(TR_CL[i][1]) > 8)
+      for (int o = 0; o < 3; o++) S.drawLine(X(h * 0.7f) + o, Y(h * 0.7f), cx + o, cy, c);
+    S.fillCircle(cx, cy, TR_CL[i][3], c);
+    trCx[i] = cx - ox; trCy[i] = cy - oy;
+  }
+  const float qx = X(0.84f) + 4 + sw * 12, qy = Y(0.84f) - 8;
+  for (int i = 0; i < 16; i++) {                       // kenar tutamlari: tac puruzlu gorunsun
+    float a = (i * 22.5f + 8 * sinf(i * 2.3f)) * 0.017453f, rr = 30 + 6 * sinf(i * 1.7f), r = 7 + 2 * sinf(i * 3.1f);
+    float fl = (0.8f + 3.5f * k) * sinf(t * f * 2.1f * 6.283f + i * 1.3f);
+    S.fillCircle(qx - rr * 1.15f * cosf(a) + fl, qy + rr * 0.9f * sinf(a) + 0.5f * fl, r, c);
+  }
+}
+// rim: gunes agacin arkasinda/yakininda (sx, sy); false ise arka isik yok
+static void drawTree(float dt, float t, bool rim, int sx, int sy) {
   static float tw = -1;
   float w = wv.ok ? wv.wind : 0;
   if (tw < 0) tw = w;
   tw += (w - tw) * min(1.0f, dt * 0.5f);              // ruzgar degisince birden degil yavasca
-  const float k = constrain(tw / 60.0f, 0.0f, 1.0f);  // 60 km/s ve ustu en siddetli
-  const float amp = 0.03f + 0.22f * k, f = 0.30f + 0.80f * k;
-  const float sw = -0.35f * k + amp * (sinf(t * f * 6.283f) + 0.35f * sinf(t * f * 2.7f * 6.283f + 1.3f)) / 1.35f;
-  const int bx = SKY_W - 28, by = HORIZON_Y - hillH[bx] + 2;
-  const float H = 40;
-  auto X = [&](float h) { return bx + sw * H * h * h; };
-  auto Y = [&](float h) { return by - H * h; };
-  float px[10], py[10];
-  for (int i = 0; i < 5; i++) {
-    float h = i * 0.25f, hw = 4.2f - 2.8f * h;
-    px[i] = X(h) - hw; py[i] = Y(h);
-    px[9 - i] = X(h) + hw; py[9 - i] = Y(h);
+  trK = constrain(tw / 60.0f, 0.0f, 1.0f);           // 60 km/s ve ustu en siddetli
+  const float amp = 0.02f + 0.13f * trK;
+  trF = 0.25f + 0.60f * trK; trT = t;
+  trSw = 0.22f * trK - amp * (sinf(t * trF * 6.283f) + 0.35f * sinf(t * trF * 2.7f * 6.283f + 1.3f)) / 1.35f;
+  if (rim) {                                          // gunes tarafina 1-2 px kaydirilmis isik rengi kopya, ustune koyu agac
+    float dx = sx - 35.0f, dy = sy - 95.0f, d = sqrtf(dx * dx + dy * dy) + 0.01f;
+    treeShape(2 * dx / d, 2 * dy / d, P_ACCENT);
   }
-  mvPoly(px, py, 10, P_BG);
-  static const int8_t CL[8][4] = {{75, -15, 4, 8}, {80, 14, 4, 8}, {95, -7, -5, 10}, {100, 8, -3, 10},
-                                  {70, -3, 8, 8}, {108, 0, -10, 8}, {88, -19, -2, 6}, {90, 19, 0, 6}};
-  for (int i = 0; i < 8; i++) {
-    float h = CL[i][0] / 100.0f, fl = (0.6f + 2.5f * k) * sinf(t * f * 1.7f * 6.283f + i * 1.9f);
-    float cx = X(h) + CL[i][1] + sw * 8 * h + fl, cy = Y(h) + CL[i][2] + 0.4f * fl;
-    if (abs(CL[i][1]) > 5) {
-      S.drawLine(X(h * 0.75f), Y(h * 0.75f), cx, cy, P_BG);
-      S.drawLine(X(h * 0.75f) + 1, Y(h * 0.75f), cx + 1, cy, P_BG);
+  treeShape(0, 0, P_BG);
+  // savrulan yapraklar (dt yalniz ilk seritte > 0: hareket bir kez, cizim her seritte)
+  const float k = trK;
+  if (dt > 0) {
+    if (k > 0.45f) {
+      trLeafAcc += (k - 0.45f) * 40 * dt;
+      while (trLeafAcc >= 1 && trLeafN < 30) {
+        trLeafAcc -= 1;
+        int c = (int)frand(0, 4.99f); float r = TR_CL[c][3];
+        trLeaf[trLeafN++] = {trCx[c] + r * 0.6f, trCy[c] + frand(-r, r) * 0.6f, (50 + 90 * k) * frand(0.7f, 1.2f), frand(-15, 25), frand(0, 6.28f)};
+      }
+    } else trLeafAcc = 0;
+    for (int i = 0; i < trLeafN;) {
+      TreeLeaf& q = trLeaf[i];
+      q.x += q.vx * dt; q.y += (q.vy + 18 * sinf(t * 5 + q.ph)) * dt; q.ph += dt * 8;
+      if (q.x > SKY_W + 4 || q.y >= SKY_H) trLeaf[i] = trLeaf[--trLeafN]; else i++;
     }
-    S.fillCircle(cx, cy, CL[i][3], P_BG);
+  }
+  for (int i = 0; i < trLeafN; i++) {                  // donerek: bir yatay bir dikey
+    const TreeLeaf& q = trLeaf[i];
+    if (sinf(q.ph) > 0) { S.drawFastHLine(q.x, q.y, 3, P_BG); S.drawFastHLine(q.x, q.y + 1, 3, P_BG); }
+    else for (int j = 0; j < 3; j++) S.drawFastHLine(q.x, q.y + j, 2, P_BG);
   }
 }
 
@@ -1133,9 +1182,13 @@ static void renderScene(Scene sc, bool day, float dt, float t, uint32_t now) {
   // Martilar yalniz gunduz ve yagissiz (acik/parcali/kapali/sis) havada
   const bool gullsOn = sunUp && (sc == SC_CLEAR || sc == SC_PARTLY || sc == SC_CLOUDY || sc == SC_FOG);
   if (gullsOn) updateGulls(false, dt, t);
-  drawTree(dt, t);
   if (sc == SC_FOG) drawFog(t);
   updateClouds(dt);
+  {  // agac bulutlarin onunde (yakin plan); gunes alcakta ve agacin arkasindaysa arka isik
+    int sx = 0, sy = 0; bool rim = false;
+    if (openSky && sunUp && elev < 12) { sunPos(st, sx, sy); rim = sx < 140; }
+    drawTree(dt, t, rim, sx, sy);
+  }
   if (gullsOn) updateGulls(true, dt, t);
   updateVisitor(gullsOn, dt);  // ziyaretci marti en onde
   {  // marti sesleri: martilar gorunurken 1-3 dk'da bir (dt yalniz ilk seritte > 0)
