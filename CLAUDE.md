@@ -57,4 +57,4 @@ Yukleme: ana sayfa yavasken OTA %10'da takiliyor -> USB (COM3) ile yukle: `pio r
 
 ## Bekleyen (2026-10-20)
 - v7.4.0 (web Donanım sayfası) derlendi, cihaza gönderilmedi (cihaz Özcan abide; OTA / GitHub release ile).
-- HUB35 / ev-lamba'da eklenenler buraya da istenecek: hatırlatma (günde 1-6 kez, düzenleme), mutfak yumurta timer'ı, Kocaeli haberleri, nem. Not: ekran LVGL (mutfak görünümü yeniden yazılmalı), ses I2S (GPIO26 ses modülü uymaz). Kaynak: `C:\Kodlar\ESP32-3248S035` (reminders.cpp, mutfak.cpp, relay_webpage_multi.h).
+- HUB35 / ev-lamba'da eklenenler buraya da istenecek: hatırlatma (günde 1-6 kez, düzenleme), mutfak yumurta timer'ı, Kocaeli haberleri, nem, gökyüzünde martılar (HUB35 display.cpp updateGulls; burada sky.cpp). Not: ekran LVGL (mutfak görünümü yeniden yazılmalı), ses I2S (GPIO26 ses modülü uymaz). Kaynak: `C:\Kodlar\ESP32-3248S035` (reminders.cpp, mutfak.cpp, relay_webpage_multi.h).
