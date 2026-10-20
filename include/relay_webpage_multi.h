@@ -640,6 +640,8 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
   <a href="/log" id="nav4" onclick="route('/log');return false;">Kayıt</a>
   <a href="/notes" id="nav5" onclick="route('/notes');return false;">Notlar</a>
   <a href="/info" id="nav10" onclick="route('/info');return false;">Donanım</a>
+  <a href="/reminders" id="nav11" onclick="route('/reminders');return false;">Hatırlatma</a>
+  <a href="/kitchen" id="nav12" onclick="route('/kitchen');return false;">Mutfak</a>
 </div>
 
 <div id="alertbar"></div>
@@ -1725,6 +1727,7 @@ function renderWeather() {
                 <button class="btn" id="refreshWeatherBtn" onclick="refreshWeather()" style="background:#2196F3">🔄 Hava Durumunu Güncelle</button>
                 <button class="btn" onclick="skyDemo(this)" style="background:#FF9800;color:#000">🌅 Ekranda 24 Saat Demosu (~2 dk)</button>
                 <button class="btn" onclick="weatherDemo(this)" style="background:#03dac6;color:#000">⛈️ Ekranda Hava Demosu (kar, fırtına... ~1 dk)</button>
+                <button class="btn" onclick="martiDemo(this)" style="background:#03dac6;color:#000">🕊️ Martı Demosu (her basışta farklı hareket: geçiş, selam, tık tık, karışık, çarpma)</button>
                 <button class="btn" onclick="alertDemo(this)" style="background:#f44336;color:#fff">🚨 Uyarı Demosu (banner + üst şerit + alt yazı, 20 sn)</button>
             </div>
         </div>`;
@@ -1749,6 +1752,15 @@ function alertDemo(btn) {
         .then(r => { if (!r.ok) throw new Error(); toast("✓ Örnek uyarılar 20 sn gösterilecek"); })
         .catch(() => toast("✗ Demo başlatılamadı", true))
         .finally(() => setTimeout(() => { btn.disabled = false; }, 21000));
+}
+
+// Ziyaretci marti: uzaktan gelir, gulumser, goz kirpar, gagasiyla ekrana vurur, uzaklasir (~15 sn)
+function martiDemo(btn) {
+    btn.disabled = true;
+    fetch("/marti")
+        .then(r => { if (!r.ok) throw new Error(); toast("✓ Martı geliyor (~15 sn)"); })
+        .catch(() => toast("✗ Demo başlatılamadı", true))
+        .finally(() => setTimeout(() => { btn.disabled = false; }, 15000));
 }
 
 // HUB ekraninda tum hava sahnelerini 8'er saniye sirayla gosterir
@@ -2234,7 +2246,11 @@ const HW_FEATURES = [
     ["Otomasyon", "Gün doğumu / batımında, sabit saatte ya da hava kararınca lambaları açıp kapatır; rüzgar uyarısı."],
     ["Hava durumu", "Open-Meteo: sıcaklık, rüzgar, nem, 7 günlük tahmin; ekranda saate ve havaya göre canlı gökyüzü."],
     ["Uyarılar", "Hava (fırtına, kuvvetli rüzgar, yoğun yağış) ve deprem (AFAD) uyarı bandı."],
-    ["Haberler", "Ekranın altında kayan haber şeridi."],
+    ["Haberler", "Ekranın altında kayan haber şeridi: Anadolu Ajansı dünya ve Kocaeli'nin öne çıkan haberleri."],
+    ["Hatırlatma", "İlaç, yapılacak iş: günde 1-6 kez, her gün / seçili günler / tek sefer; zamanı gelince uyarı bandı ve ses, düzenlenebilir."],
+    ["Mutfak", "Yumurta zamanlayıcısı (rafadan → çok pişmiş); aşama sesleri, hazır olunca uyarı bandı."],
+    ["Gökyüzü", "Canlı gökyüzünde uzaktan ve yakından uçan martılar; arada bir maskot martı gelir (geçer, selam verir, cama tıklar, çarpar)."],
+    ["Ses", "Kart üstü I2S hoparlör: uyarı, deprem, hatırlatma, mutfak sesleri; Donanım sayfasından aç / kapat, seviye."],
     ["Yazılım güncelleme", "Sistem sekmesinden GitHub'dan güncelleme; geliştirmede OTA."],
     ["Telegram", "Bot ve sohbet kimliği Ayar sayfasından girilir; açılış ve uyarı bildirimleri."],
     ["Diğer", "Notlar, olay kaydı, parlaklık / kontrast / canlılık ayarı, röle düğümleri için web'den firmware yükleyici, MQTT."],
@@ -2247,6 +2263,7 @@ const HW_USAGE = [
     "Ekran ayarları ve güncelleme: web'de <b>Sistem</b> sekmesi.",
 ];
 const HW_CHANGELOG = [
+    ["7.5.0", "2026-10-20", ["Hatırlatma sekmesi (günde 1-6 kez, düzenleme)", "Mutfak sekmesi: yumurta zamanlayıcısı, hazır olunca uyarı bandı", "Haberlere Kocaeli", "Ses: kart üstü I2S hoparlör (uyarı, deprem, hatırlatma, mutfak)", "Gökyüzüne martılar ve maskot martı (geçiş, selam, tık tık, karışık, çarpma); Martı Demosu"]],
     ["7.4.0", "2026-10-20", ["Donanım sayfası: özellikler, kullanım, sürüm geçmişi, kart bilgisi, canlı durum"]],
     ["7.3.0", "2026-10-14", ["Yapay zeka efektleri kaldırıldı (flash %92)", "4 röleli düğüm desteği (2×2 lamba kartı, 4 röle zamanlayıcı)", "Cihazlar sayfasında Firmware Yükle bağlantısı"]],
     ["7.2.1", "2026-10-13", ["Röle düğümleri için 8 kart firmware'i ve hazır imajlar", "GitHub'dan güncelleme uçtan uca denendi", "Yayın imajlarından kişisel bilgiler temizlendi"]],
@@ -2259,10 +2276,224 @@ const HW_ROWS = [
     ["Flaş", "4 MB quad", "Ö"],
     ["Ekran", "800×480 RGB565 paralel, arka ışık IO2", "Ö"],
     ["Dokunmatik", "GT911 0x5D (I2C IO19/IO20), PCA9557 0x18 üzerinden RST/INT", "B"],
-    ["Hoparlör", "I2S: SDIN IO17, LRCLK IO18, BCLK IO42 (kullanılmıyor)", "B"],
+    ["Hoparlör", "I2S: SDIN IO17, LRCLK IO18, BCLK IO42 (ses çıkışı; kartta denenmedi)", "B"],
     ["Diğer", "TF kart yuvası (SPI IO10-13), USB-C (CH340, UART0)", "B"],
     ["Röle düğümleri", "ESP-01S / LC-ESP01-4R-12V — HTTP komut + UDP durum", "Ö"],
 ];
+// --- HATIRLATMA SAYFASI (/get_reminders, /save_reminders) ---
+// Zamani gelince HUB ekraninda ve burada uyari cubugu cikar; onaylanana kadar 5 dk'da bir ses.
+// r: "g" her gun, "h" secili gunler (w bit0 = Pazar), "t" tek sefer (d tarihi)
+let REMINDERS = [];
+let RM_EDIT = -1;  // duzenlenen kaydin indeksi (-1: yeni)
+const RM_DAYS = [[1,"Pzt"],[2,"Sal"],[3,"Çar"],[4,"Per"],[5,"Cum"],[6,"Cmt"],[0,"Paz"]];
+
+function renderReminders() {
+    fetch("/get_reminders").then(r => r.json()).then(list => {
+        REMINDERS = Array.isArray(list) ? list : [];
+        drawReminders();
+    }).catch(() => {
+        document.getElementById("content").innerHTML = `<div class="settings-container">✗ Hatırlatmalar yüklenemedi</div>`;
+    });
+}
+
+// Gunde N kez icin varsayilan saatler
+const RM_DEF = {1:["09:00"], 2:["09:00","21:00"], 3:["09:00","14:00","21:00"], 4:["08:00","12:00","16:00","20:00"],
+                5:["08:00","11:00","14:00","17:00","20:00"], 6:["08:00","10:00","12:00","14:00","16:00","18:00"]};
+const p2 = v => String(v).padStart(2, "0");
+
+function rmWhen(r) {
+    const slots = Array.isArray(r.s) && r.s.length ? r.s : [[r.h, r.m]];
+    const hm = slots.map(([h, m]) => p2(h) + ":" + p2(m)).join(", ") + (slots.length > 1 ? ` (günde ${slots.length} kez)` : "");
+    if (r.r === "t") return `${r.d ? r.d.split("-").reverse().join(".") : "?"} ${hm} (tek sefer)`;
+    if (r.r === "h") return RM_DAYS.filter(([b]) => (r.w >> b) & 1).map(([, n]) => n).join(", ") + " " + hm;
+    return "Her gün " + hm;
+}
+
+function drawReminders() {
+    const rows = REMINDERS.map((r, i) => `
+        <div class="note-row${r.on === false ? ' done' : ''}">
+            <input type="checkbox" title="Açık/kapalı" ${r.on === false ? '' : 'checked'} onchange="toggleReminder(${i}, this.checked)">
+            <span class="note-text"><b>${escHtml(r.t)}</b>${r.n ? ' — ' + escHtml(r.n) : ''}<br><small style="color:#03dac6">${rmWhen(r)}</small></span>
+            <button class="mini-btn" onclick="editReminder(${i})" title="Düzenle">✏️</button>
+            <button class="mini-btn" onclick="delReminder(${i})" title="Sil">🗑️</button>
+        </div>`).join('');
+    const today = new Date().toLocaleDateString("sv-SE");  // yerel YYYY-MM-DD (toISOString UTC'ydi)
+    document.getElementById("content").innerHTML = `
+    <div class="settings-container">
+        <h3>⏰ Hatırlatma</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+            <input type="text" id="rmT" placeholder="Başlık (ör. Tansiyon ilacı)" maxlength="40">
+            <input type="text" id="rmN" placeholder="Not (isteğe bağlı)" maxlength="60">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <label>Günde <select id="rmK" onchange="rmTimes()" style="width:auto">${[1,2,3,4,5,6].map(k => `<option value="${k}">${k}</option>`).join('')}</select> kez</label>
+                <span id="rmTimes" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="rmR" onchange="rmRepChange()" style="width:auto">
+                    <option value="g">Her gün</option>
+                    <option value="h">Seçili günler</option>
+                    <option value="t">Tek sefer</option>
+                </select>
+                <input type="date" id="rmD" value="${today}" style="width:auto;display:none">
+            </div>
+            <div id="rmW" style="display:none;gap:10px;flex-wrap:wrap">
+                ${RM_DAYS.map(([b, n]) => `<label><input type="checkbox" class="rmDay" value="${b}"> ${n}</label>`).join('')}
+            </div>
+            <div style="display:flex;gap:8px">
+                <button class="btn" id="rmSave" style="flex-grow:0;background:#03dac6;color:#000" onclick="addReminder()">Ekle</button>
+                <button class="btn" id="rmCancel" style="flex-grow:0;display:none" onclick="RM_EDIT=-1;drawReminders()">Vazgeç</button>
+            </div>
+        </div>
+        ${rows || '<div style="color:#888">Henüz hatırlatma yok.</div>'}
+        <small style="color:#888;display:block;margin-top:10px">Her saat ayrı hatırlatılır ve ayrı onaylanır. Zamanı gelince HUB ekranında uyarı bandı çıkar; ekrandaki banttan ya da buradaki uyarı çubuğundan onaylanır. Onaylanana kadar 5 dakikada bir ses.</small>
+    </div>`;
+    rmTimes();
+}
+
+function rmTimes() {
+    const k = Number(document.getElementById("rmK").value);
+    document.getElementById("rmTimes").innerHTML = RM_DEF[k].map(v => `<input type="time" class="rmHM" value="${v}" style="width:auto">`).join('');
+}
+
+function rmRepChange() {
+    const r = document.getElementById("rmR").value;
+    document.getElementById("rmW").style.display = r === "h" ? "flex" : "none";
+    document.getElementById("rmD").style.display = r === "t" ? "" : "none";
+}
+
+function postReminders(msg) {
+    return fetch("/save_reminders", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(REMINDERS)
+    }).then(r => {
+        if (!r.ok) throw new Error();
+        if (msg) toast(msg);
+    }).catch(() => toast("✗ Hatırlatma kaydedilemedi", true));
+}
+
+function addReminder() {
+    const t = document.getElementById("rmT").value.trim();
+    if (!t) { toast("✗ Başlık girin", true); return; }
+    const s = [...new Set([...document.querySelectorAll(".rmHM")].map(e => e.value).filter(v => v))].sort()
+              .map(v => v.split(":").map(Number));
+    if (!s.length) { toast("✗ Saat girin", true); return; }
+    const r = document.getElementById("rmR").value;
+    const editing = RM_EDIT >= 0 && REMINDERS[RM_EDIT];
+    const item = {i: editing ? REMINDERS[RM_EDIT].i : REMINDERS.reduce((a, x) => Math.max(a, x.i || 0), 0) + 1,
+                  t, n: document.getElementById("rmN").value.trim(), s, r, on: editing ? REMINDERS[RM_EDIT].on !== false : true};
+    if (r === "h") {
+        item.w = [...document.querySelectorAll(".rmDay:checked")].reduce((a, c) => a | (1 << Number(c.value)), 0);
+        if (!item.w) { toast("✗ En az bir gün seçin", true); return; }
+    }
+    if (r === "t") item.d = document.getElementById("rmD").value;
+    if (editing) REMINDERS[RM_EDIT] = item; else REMINDERS.push(item);
+    const msg = editing ? "✓ Hatırlatma güncellendi" : "✓ Hatırlatma eklendi";
+    RM_EDIT = -1;
+    drawReminders();
+    postReminders(msg);
+}
+
+// Kaydi forma yukle; "Kaydet" ayni kimlikle gunceller
+function editReminder(i) {
+    const r = REMINDERS[i];
+    RM_EDIT = i;
+    drawReminders();
+    document.getElementById("rmT").value = r.t || "";
+    document.getElementById("rmN").value = r.n || "";
+    const slots = Array.isArray(r.s) && r.s.length ? r.s : [[r.h || 0, r.m || 0]];
+    document.getElementById("rmK").value = Math.min(6, slots.length);
+    rmTimes();
+    document.querySelectorAll(".rmHM").forEach((e, k) => { if (slots[k]) e.value = p2(slots[k][0]) + ":" + p2(slots[k][1]); });
+    document.getElementById("rmR").value = r.r || "g";
+    rmRepChange();
+    if (r.r === "t" && r.d) document.getElementById("rmD").value = r.d;
+    document.querySelectorAll(".rmDay").forEach(c => { c.checked = r.r === "h" && ((r.w >> Number(c.value)) & 1); });
+    document.getElementById("rmSave").textContent = "Kaydet";
+    document.getElementById("rmCancel").style.display = "";
+    document.getElementById("rmT").focus();
+}
+
+function toggleReminder(i, on) {
+    REMINDERS[i].on = on;
+    drawReminders();
+    postReminders(on ? "✓ Açıldı" : "✓ Kapatıldı");
+}
+
+function delReminder(i) {
+    if (!confirm(`"${REMINDERS[i].t}" silinsin mi?`)) return;
+    REMINDERS.splice(i, 1);
+    drawReminders();
+    postReminders("✓ Silindi");
+}
+
+// --- MUTFAK SAYFASI: yumurta timer (/api/mt). Sure yumurta kaynayan suya kondugu andan itibarendir. ---
+const MT_ADI = ["Çiğ", "Rafadan", "Kayısı", "Az pişmiş", "Tam pişmiş", "Çok pişmiş"];
+const MT_RENK = ["#8cc8e6", "#ffa050", "#ffc864", "#f0e68c", "#a0e68c", "#c8a0e6"];
+let MT = null, mtH = 2, mtD = null, mtPoll = null;
+const mtFmt = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+
+function renderKitchen() {
+    document.getElementById("content").innerHTML = `
+    <div class="settings-container">
+        <h3>🥚 Mutfak — yumurta</h3>
+        <div id="mtSel" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px"></div>
+        <div id="mtBig" style="font:700 54px Consolas,monospace;text-align:center;margin:10px 0 2px;color:#c8c8d7">--:--</div>
+        <div id="mtSt" style="text-align:center;font-weight:600;min-height:22px"></div>
+        <div id="mtBar" style="position:relative;display:flex;height:14px;border:1px solid #3a3f48;border-radius:4px;overflow:hidden;margin-top:10px"></div>
+        <div id="mtNext" style="color:#888;font-size:13px;margin-top:6px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn" onclick="mtAdj(-60)">−1 dk</button><button class="btn" onclick="mtAdj(-15)">−15 sn</button>
+            <button class="btn" onclick="mtAdj(15)">+15 sn</button><button class="btn" onclick="mtAdj(60)">+1 dk</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn" id="mtGo" style="background:#03dac6;color:#000" onclick="mtGo()">Başlat</button>
+            <button class="btn" onclick="mtApi('act=reset')">Sıfırla</button>
+        </div>
+        <small style="color:#888;display:block;margin-top:10px">Süre yumurta <b>kaynayan suya</b> konduğu andan itibarendir. Hazır olunca HUB ekranında uyarı bandı çıkar; her aşamada kısa ses, bitince alarm çalar ve sıfırlanana kadar 10 dk boyunca dakikada bir tekrarlar. Sayfayı kapatsan da HUB saymaya devam eder.</small>
+    </div>`;
+    mtD = null;
+    mtApi("");
+    if (mtPoll) clearInterval(mtPoll);
+    mtPoll = setInterval(() => { if (location.pathname === "/kitchen") mtApi(""); else { clearInterval(mtPoll); mtPoll = null; } }, 1000);
+}
+
+function mtApi(q) {
+    return fetch("/api/mt?" + q).then(r => r.json()).then(j => { MT = j; mtDraw(); })
+        .catch(() => { const e = document.getElementById("mtSt"); if (e) e.textContent = "✗ HUB'a ulaşılamadı"; });
+}
+function mtSel(i) { mtH = i; mtD = MT ? MT.t[i - 1] : null; if (MT && MT.on) mtApi(`act=set&hedef=${i}&sec=${mtD}`); else mtDraw(); }
+function mtAdj(d) { const cur = mtD != null ? mtD : (MT ? MT.dur : 300); mtD = Math.max(10, Math.min(3600, cur + d)); if (MT && MT.on) mtApi(`act=set&hedef=${mtH}&sec=${mtD}`); else mtDraw(); }
+function mtGo() {
+    if (MT && MT.on && !MT.done) { mtApi("act=" + (MT.run ? "pause" : "resume")); return; }
+    mtApi(`act=start&hedef=${mtH}&sec=${mtD != null ? mtD : MT.t[mtH - 1]}`);
+}
+
+function mtDraw() {
+    if (!MT || !document.getElementById("mtSel")) return;
+    if (mtD == null) { mtH = MT.on ? MT.hedef : mtH; mtD = MT.on ? MT.dur : MT.t[mtH - 1]; }
+    if (MT.on) { mtH = MT.hedef; mtD = MT.dur; }
+    document.getElementById("mtSel").innerHTML = [1, 2, 3, 4, 5].map(i => `<button class="btn" onclick="mtSel(${i})"
+        style="${i === mtH ? `background:${MT_RENK[i]};color:#000` : ''}">${MT_ADI[i]}<small style="display:block;font-size:11px;opacity:.75">${mtFmt(MT.t[i - 1])}</small></button>`).join('');
+    const el = MT.el / 1000, rem = Math.max(0, mtD - el);
+    const big = document.getElementById("mtBig");
+    big.textContent = MT.on ? (MT.done ? "+" + mtFmt(el - mtD) : mtFmt(Math.ceil(rem))) : mtFmt(mtD);
+    big.style.color = MT.done ? "#ff6e6e" : MT.on ? (MT.run ? MT_RENK[mtH] : "#ffd278") : "#c8c8d7";
+    const st = document.getElementById("mtSt");
+    st.textContent = !MT.on ? "Hedef: " + MT_ADI[mtH] : MT.done ? "HAZIR — afiyet olsun" : (MT.run ? "" : "Duraklatıldı — ") + MT_ADI[MT.st];
+    st.style.color = MT.on ? MT_RENK[MT.st] : "#888";
+    const span = Math.max(MT.t[4], mtD) * 1.04, edges = [0, ...MT.t, span];
+    document.getElementById("mtBar").innerHTML = edges.slice(0, -1).map((a, i) => {
+        const w = (edges[i + 1] - a) / span * 100;
+        return `<i style="display:block;width:${w}%;background:${MT_RENK[i]};opacity:${MT.on && el >= a ? 1 : .25};border-right:1px solid #000"></i>`;
+    }).join('') + `<span style="position:absolute;top:-2px;bottom:-2px;width:2px;background:#ff6e6e;left:${mtD / span * 100}%"></span>`
+      + (MT.on ? `<span style="position:absolute;top:-2px;bottom:-2px;width:2px;background:#fff;left:${Math.min(el, span) / span * 100}%"></span>` : '');
+    const nx = MT.t.findIndex(v => v > el);
+    document.getElementById("mtNext").textContent = MT.on && !MT.done && nx >= 0 && MT.t[nx] < mtD
+        ? `Sonraki aşama: ${MT_ADI[nx + 1]} — ${mtFmt(MT.t[nx] - el)} sonra` : "";
+    document.getElementById("mtGo").textContent = MT.on && !MT.done ? (MT.run ? "Duraklat" : "Devam") : "Başlat";
+}
+
 // --- DONANIM SAYFASI (ortak): ozellikler, kullanim, surum gecmisi, kart/modul tablosu, canli durum (/hw_info).
 // Projeye ozel icerik: HW_FEATURES, HW_USAGE, HW_CHANGELOG, HW_ROWS (bu blogun ustunde).
 // Ses karti yalniz /hw_info "ses_on" bildirirse, dokunmatik satiri yalniz "touch" bildirirse gorunur.
@@ -2335,6 +2566,10 @@ function navigate() {
     document.querySelectorAll('.nav a').forEach(a => a.className = (a.getAttribute('href') === p || (p === '/device' && a.getAttribute('href') === '/settings')) ? 'active' : '');
     if(p === "/info") {
         renderInfo();
+    } else if(p === "/reminders") {
+        renderReminders();
+    } else if(p === "/kitchen") {
+        renderKitchen();
     } else if(p === "/settings") {
         fetchDevices().then(renderSettings);
     } else if(p === "/log") {

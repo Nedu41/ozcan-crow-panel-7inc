@@ -13,3 +13,4 @@ void startSkyDemo();                    // 24 saat ~2 dk
 void startWeatherDemo();                // tum hava tipleri 8'er sn
 size_t skyBmpSize();                    // /api/sky.bmp (8 bit paletli BMP) govdesi
 size_t skyBmpRead(uint8_t* buf, size_t maxLen, size_t index);
+void martiCagir();  // ziyaretci marti hemen gelsin (web /marti)

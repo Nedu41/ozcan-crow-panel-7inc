@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Web arayuzu basliginda ve TFT ust seridinde gosterilir - tek kaynak burasi
-#define FW_VERSION "7.4.0-crow"  // artirinca web Donanim > Surum gecmisi (HW_CHANGELOG) guncellenir
+#define FW_VERSION "7.5.0-crow"  // artirinca web Donanim > Surum gecmisi (HW_CHANGELOG) guncellenir
 
 // ---- Donanim ----
 // Pinler: board.h / docs/DONANIM.md
@@ -19,7 +19,10 @@ const unsigned long DEBOUNCE_DELAY_MS = 600000;    // manuel kontrolden sonra ot
 const unsigned long NEWS_UPDATE_INTERVAL = 900000; // 15 dk
 // Anadolu Ajansi dunya haberleri: ~15-22KB, yonlendirme yok, duz <title> (2026-09-27 dogrulandi)
 #define NEWS_RSS_URL "https://www.aa.com.tr/tr/rss/default?cat=dunya"
-const int NEWS_MAX_ITEMS = 16;
+const int NEWS_MAX_ITEMS = 12;
+// Bolge haberleri: Google Haberler "Kocaeli" aramasi (bircok kaynak, one cikanlar ustte; yonlendirmesiz 200, 2026-10-20)
+#define NEWS_LOCAL_RSS_URL "https://news.google.com/rss/search?q=Kocaeli&hl=tr&gl=TR&ceid=TR:tr"
+const int NEWS_LOCAL_ITEMS = 4;
 
 // ---- Uyarilar (hava + deprem, bkz. alerts.cpp) ----
 #define ALERT_WIND_KMH 50            // gunluk max ruzgar hamlesi esigi (km/s)

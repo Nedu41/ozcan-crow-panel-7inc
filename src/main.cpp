@@ -18,6 +18,9 @@
 #include "ui.h"
 #include "weather.h"
 #include "web_server.h"
+#include "ses.h"
+#include "reminders.h"
+#include "mutfak.h"
 
 static bool hubUp = false;     // hizmetler baslatildi mi (hubStartTask tetiklendi)
 static volatile bool hubReady = false;  // hizmetler hazir: loop() onlari calistirabilir
@@ -69,6 +72,9 @@ void setup() {
     ESP.restart();
   }
   alertsInit();
+  remindersInit();
+  sesInit();  // I2S hoparlor (belgeden pinler)
+  sesCal(SES_ACILIS);  // varsayilan kapali
   loadDevices();
   loadWeatherConfig();
   loadScheduleConfig();
@@ -78,8 +84,21 @@ void setup() {
   uiStart();
 }
 
+// Hatirlatici (5 sn'de bir) + mutfak timer'i. CrowPanel ekraninda yumurta gorunumu yok: hazir olunca uyari bandi.
+static void kitchenTick() {
+  static uint32_t lastRm = 0;
+  if (millis() - lastRm >= 5000) { lastRm = millis(); remindersTick(); }
+  mtTick();
+  static bool lastDone = false; static String mtId;
+  bool d = mtOn() && mtDone();
+  if (d && !lastDone) { mtId = "mt:" + String(millis()); alertsRaise(mtId, 2, "YUMURTA HAZIR", String(MT_AD[mtHedef()]) + " - afiyet olsun"); }
+  if (!d && lastDone && mtId.length()) { alertsAck(mtId); mtId = ""; }   // sifirlaninca bant kalkar
+  lastDone = d;
+}
+
 void loop() {
   guiLoop();
+  kitchenTick();
   if (hubReady) {
     webLoop();
     ArduinoOTA.handle();

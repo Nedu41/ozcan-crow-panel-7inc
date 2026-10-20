@@ -15,6 +15,9 @@
 #include "wifi_nets.h"
 #include "alerts.h"
 #include "relay_webpage_multi.h"
+#include "ses.h"
+#include "reminders.h"
+#include "mutfak.h"
 #include <esp_chip_info.h>
 #include <esp_system.h>
 
@@ -683,6 +686,61 @@ void setupWebServer() {
   server.on("/device", AsyncWebRequestMethod::HTTP_GET, handleRoot);
   server.on("/notes", AsyncWebRequestMethod::HTTP_GET, handleRoot);
   server.on("/info", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  server.on("/reminders", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  server.on("/kitchen", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  // Mutfak timer: act=start&hedef=1-5&sec=N | set&hedef=&sec= | pause | resume | reset; bos act = durum
+  server.on("/api/mt", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
+    String act = request->hasParam("act") ? request->getParam("act")->value() : "";
+    int h = request->hasParam("hedef") ? request->getParam("hedef")->value().toInt() : mtHedef();
+    uint32_t sec = request->hasParam("sec") ? request->getParam("sec")->value().toInt() : mtDur();
+    if (act == "start") mtStart(h, sec);
+    else if (act == "set") mtSet(h, sec);
+    else if (act == "pause") mtPause(true);
+    else if (act == "resume") mtPause(false);
+    else if (act == "reset") mtReset();
+    request->send(200, "application/json", mtJson());
+  });
+  server.on("/get_reminders", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "application/json", remindersJson());
+  });
+  server.on("/save_reminders", AsyncWebRequestMethod::HTTP_POST,
+    [](AsyncWebServerRequest *request) {},
+    nullptr,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) request->_tempObject = new String();
+      String *body = (String *)request->_tempObject;
+      body->concat((const char *)data, len);
+      if (index + len == total) {
+        bool ok = remindersSave(*body);
+        delete body;
+        request->_tempObject = nullptr;
+        request->send(ok ? 200 : 400, "text/plain", ok ? "OK" : "HATA");
+      }
+    });
+  server.on("/kitchen", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  // Mutfak timer: act=start&hedef=1-5&sec=N | set&hedef=&sec= | pause | resume | reset; bos act = durum
+  server.on("/api/mt", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
+    String act = request->hasParam("act") ? request->getParam("act")->value() : "";
+    int h = request->hasParam("hedef") ? request->getParam("hedef")->value().toInt() : mtHedef();
+    uint32_t sec = request->hasParam("sec") ? request->getParam("sec")->value().toInt() : mtDur();
+    if (act == "start") mtStart(h, sec);
+    else if (act == "set") mtSet(h, sec);
+    else if (act == "pause") mtPause(true);
+    else if (act == "resume") mtPause(false);
+    else if (act == "reset") mtReset();
+    request->send(200, "application/json", mtJson());
+  });
+  server.on("/ses", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("on")) sesAcikAyarla(request->getParam("on")->value() == "1");
+    if (request->hasParam("lv")) sesSeviyeAyarla(request->getParam("lv")->value().toInt());
+    if (request->hasParam("acl")) sesAcilisAyarla(request->getParam("acl")->value() == "1");
+    if (request->hasParam("test")) sesCal(SES_DENEME);
+    request->send(200, "application/json", String("{\"ok\":true,\"on\":") + (sesAcik() ? "true" : "false") + ",\"lv\":" + sesSeviye() + "}");
+  });
+  server.on("/marti", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
+    martiCagir();
+    request->send(200, "text/plain; charset=utf-8", "Martı geliyor (gündüz ve yağışsız havada görünür)");
+  });
   // Donanim sayfasi: canli cip/bellek bilgisi (sabit kart/modul tablosu sayfanin kendisinde)
   server.on("/hw_info", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
     esp_chip_info_t ci;
@@ -706,6 +764,9 @@ void setupWebServer() {
     d["rssi"] = WiFi.RSSI();
     d["fw"] = FW_VERSION;
     d["sdk"] = ESP.getSdkVersion();
+    d["ses_on"] = sesAcik();
+    d["ses_lv"] = sesSeviye();
+    d["ses_acl"] = sesAcilisAcik();
     String out;
     serializeJson(d, out);
     request->send(200, "application/json", out);

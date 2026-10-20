@@ -761,6 +761,311 @@ static void drawFog(float t) {
   }
 }
 
+#include "ses.h"
+// Martilar: uzaktakiler kucuk/gri/yavas (bulutlarin arkasinda), yakindakiler buyuk/beyaz/hizli (onunde).
+// Kanat cirpar, ara sira suzulur, hafifce iner-cikar; ekrandan cikinca rastgele yeniden girer. Mantiksal koordinat.
+struct Gull { float x, y, v, s, ph, fq, bob, glide; bool near; };
+static Gull gulls[6];
+static bool gullsInit = false;
+static void gullSpawn(Gull& g, bool anywhere) {
+  g.near = (&g - gulls) < 2;                                   // ilk ikisi yakin
+  g.s = g.near ? frand(6.5f, 9.5f) : frand(2.2f, 3.6f);        // yarim kanat acikligi
+  float spd = g.near ? frand(16, 28) : frand(5, 11);
+  g.v = (frand(0, 1) < 0.5f) ? spd : -spd;
+  g.x = anywhere ? frand(0, SKY_W) : (g.v > 0 ? -frand(15, 120) : SKY_W + frand(15, 120));
+  g.y = g.near ? frand(28, HORIZON_Y - 60) : frand(12, HORIZON_Y - 45);
+  g.ph = frand(0, 6.28f);
+  g.fq = g.near ? frand(3.2f, 4.2f) : frand(2.0f, 2.8f);     // kanat cirpma (Hz)
+  g.bob = frand(0, 6.28f);
+  g.glide = 0;
+}
+static void drawGull(const Gull& g, uint8_t col) {
+  // Suzulurken kanat hafif yukarida sabit; cirparken dirsek ve uc birlikte iner-kalkar ("M" bicimi)
+  float f = g.glide > 0 ? 0.35f : sinf(g.ph);
+  float s = g.s, x = g.x, y = g.y;
+  float ey = y - s * (0.18f + 0.32f * f);                      // dirsek
+  float ty = y - s * (0.05f + 0.55f * f) + s * 0.25f;          // kanat ucu
+  S.drawLine(x - s, ty, x - s * 0.45f, ey, col);
+  S.drawLine(x - s * 0.45f, ey, x, y, col);
+  S.drawLine(x, y, x + s * 0.45f, ey, col);
+  S.drawLine(x + s * 0.45f, ey, x + s, ty, col);
+  if (g.near) {                                                // yakindakiler kalin: bir alt satir daha
+    S.drawLine(x - s * 0.45f, ey + 1, x, y + 1, col);
+    S.drawLine(x, y + 1, x + s * 0.45f, ey + 1, col);
+  }
+}
+// near: false = uzaktakiler (bulutlardan once), true = yakindakiler (sonra). dt = 0 ise ilerlemez (ikinci serit).
+static void updateGulls(bool nearPass, float dt, float t) {
+  if (!gullsInit) { gullsInit = true; for (auto& g : gulls) gullSpawn(g, true); }
+  for (auto& g : gulls) {
+    if (g.near != nearPass) continue;
+    if (dt > 0) {
+      g.x += g.v * dt;
+      if (g.glide > 0) g.glide -= dt;
+      else { g.ph += g.fq * 6.2832f * dt; if (frand(0, 1) < dt * 0.15f) g.glide = frand(1.0f, 2.5f); }
+      g.bob += dt * 0.9f;
+      g.y += sinf(g.bob) * dt * (g.near ? 3.0f : 1.2f);
+      if (g.x < -140 || g.x > SKY_W + 140) gullSpawn(g, false);
+    }
+    drawGull(g, g.near ? P_WHITE : P_GRAY);
+  }
+}
+
+// Ziyaretci marti: arada bir uzaktan iyice yaklasir, onden gorunur (gulumser, goz kirpar, gagasiyla ekrana
+// uc kez "tik" vurur - ses + carpma isiltisi), sonra uzaklasir. 4-9 dk'da bir (gunduz, yagissiz) ya da web /marti.
+// Sure dt ile ilerler (HUB35'te ikinci seritte durur). Gumus marti gibi: beyaz bas, gri kanat, siyah uc,
+// sari-turuncu gaga ve alt gagada kirmizi benek.
+static volatile bool martiReq = false;
+void martiCagir() { martiReq = true; }
+static float mvT = -1, mvNext = 0;                 // mvT < 0: ziyaret yok
+static float mvSx, mvSy, mvTx, mvTy, mvEx, mvEy;   // baslangic, yakin nokta, cikis
+static float mvPh = 0;
+static int mvPeck = 0;
+static uint16_t mvSavNavy = 0, mvSavMouth = 0;   // ziyaret oncesi palet renkleri                             // calinan tik sayisi (ses bir kez)
+static const float MV_IN = 4.5f, MV_HOLD = 5.5f, MV_OUT = 4.0f, MV_K = 2.0f;
+static inline float mvEase(float a) { a = constrain(a, 0.0f, 1.0f); return a * a * (3 - 2 * a); }
+// Cokgen doldurma (yatay tarama) ve kalin yay: maskot cizimi icin
+static void mvPoly(const float* px, const float* py, int n, uint8_t c) {
+  float y0 = py[0], y1 = py[0];
+  for (int i = 1; i < n; i++) { y0 = min(y0, py[i]); y1 = max(y1, py[i]); }
+  for (float y = y0; y <= y1; y += 0.75f) {
+    float xs[16]; int m = 0;
+    for (int i = 0; i < n && m < 16; i++) {
+      float ax = px[i], ay = py[i], bx = px[(i + 1) % n], by = py[(i + 1) % n];
+      if ((ay <= y && y < by) || (by <= y && y < ay)) xs[m++] = ax + (y - ay) * (bx - ax) / (by - ay);
+    }
+    for (int i = 1; i < m; i++) for (int j = i; j > 0 && xs[j - 1] > xs[j]; j--) { float t = xs[j]; xs[j] = xs[j - 1]; xs[j - 1] = t; }
+    for (int i = 0; i + 1 < m; i += 2) S.drawFastHLine(xs[i], y, xs[i + 1] - xs[i] + 0.75f, c);
+  }
+}
+static float mvM = 1;   // ayna (drawVisitor ayarlar)
+static void mvArc(float cx, float cy, float r, float a0, float a1, uint8_t c, int th) {
+  for (int t = 0; t < th; t++) {
+    float rr = r + t * 0.6f;
+    for (float a = a0; a < a1; a += 6) {
+      float b2 = min(a1, a + 6), ra = a * 0.017453f, rb = b2 * 0.017453f;
+      S.drawLine(cx + mvM * rr * cosf(ra), cy + rr * sinf(ra), cx + mvM * rr * cosf(rb), cy + rr * sinf(rb), c);
+    }
+  }
+}
+#define MV_POLY(c, ...) do { const float _p[] = {__VA_ARGS__}; float _x[12], _y[12]; int _n = sizeof(_p) / sizeof(float) / 2; \
+  for (int _i = 0; _i < _n; _i++) { _x[_i] = _p[2 * _i]; _y[_i] = _p[2 * _i + 1]; } mvPoly(_x, _y, _n, c); } while (0)
+static const uint8_t MV_NAVY = P_PRECIP, MV_MOUTH = P_FLASH;   // ziyaret suresince bu iki palet yuvasi (bkz updateVisitor)
+
+// Maskot marti (onden, gaga sola): iri bitisik gozler, kalin kaslar, kocaman kivrik turuncu gaga (agiz acik,
+// kirmizi ic), tepede tuy percemi, uzun beyaz govde, lacivert serit kanat/kuyruk, turuncu ayak.
+static bool mvDizzy = false;   // carpma sonrasi: gozler carpi
+static void drawVisitor(float x, float y, float k, float flap, bool smile, bool wink, float hit, bool mirror) {
+  const float m = mirror ? -1.0f : 1.0f;
+  mvM = m;
+  const float f = flap * 8 * k;
+  for (int s = -1; s <= 1; s += 2) {                              // kanatlar
+    auto X = [&](float dx) { return x + m * 1 * k + s * dx; };
+    const float Dw = 14 * k;
+    MV_POLY(MV_NAVY, X(5 * k), y + 4 * k + Dw, X(17 * k), y - 4 * k - f + Dw, X(31 * k), y - 1 * k - f * 0.6f + Dw,
+            X(41 * k), y + 5 * k - f * 0.3f + Dw, X(33 * k), y + 7 * k - f * 0.5f + Dw, X(18 * k), y + 7 * k - f * 0.6f + Dw,
+            X(6 * k), y + 13 * k + Dw);
+    if (k > 0.5f) for (int j = 0; j < 2; j++) {                   // acik seritler
+      float dd = j ? 11.5f * k : 9 * k;
+      S.drawLine(X(dd), y + 1 * k - f * 0.5f + Dw + j * 0.4f * k, X(dd + 1.5f * k), y + 9.5f * k - f * 0.55f + Dw, P_GRAY);
+      S.drawLine(X(dd + 0.6f * k), y + 1 * k - f * 0.5f + Dw + j * 0.4f * k, X(dd + 2.1f * k), y + 9.5f * k - f * 0.55f + Dw, P_GRAY);
+    }
+  }
+  MV_POLY(MV_NAVY, x - m * 2.5f * k, y + 33 * k, x + m * 5.5f * k, y + 33 * k, x + m * 6.5f * k, y + 42 * k, x + m * 1.5f * k, y + 44 * k, x - m * 3.5f * k, y + 42 * k);  // kuyruk
+  S.drawFastHLine(x - m * 2.8f * k, y + 37.5f * k, 9 * k, P_GRAY);
+  S.drawFastHLine(x - m * 3.2f * k, y + 40 * k, 9.5f * k, P_GRAY);
+  for (int i = 0; i < 2; i++) {                                    // ayaklar
+    float dx = i ? 7.5f * k : -5.5f * k;
+    S.drawLine(x + m * dx, y + 31 * k, x + m * dx, y + 34 * k, P_ORANGE);
+    S.drawLine(x + m * dx + 0.5f * k, y + 31 * k, x + m * dx + 0.5f * k, y + 34 * k, P_ORANGE);
+    MV_POLY(P_ORANGE, x + m * dx - 2 * k, y + 34 * k, x + m * dx + 2.5f * k, y + 34 * k, x + m * dx + 0.3f * k, y + 36 * k);
+  }
+  {  // govde + boyun (gri kenar golgesi)
+    const float bx[] = {-7, 8, 9, 9.5f, 8, 3, -3, -7, -7.5f, -6}, by[] = {-4, -6, 8, 22, 31, 36, 36, 31, 20, 8};
+    float px[10], py[10];
+    for (int i = 0; i < 10; i++) { px[i] = x + m * bx[i] * k; py[i] = y + by[i] * k; }
+    mvPoly(px, py, 10, P_GRAY);
+    for (int i = 0; i < 10; i++) px[i] += m * (bx[i] > 0 ? -0.8f : 0.3f) * k;
+    mvPoly(px, py, 10, P_WHITE);
+  }
+  S.fillCircle(x + m * 0.5f * k, y - 6 * k, 10.5f * k, P_GRAY);        // bas
+  S.fillCircle(x + m * 0.2f * k, y - 6.2f * k, 9.9f * k, P_WHITE);
+  if (k > 0.4f) {
+    const float ang[3] = {-60, -40, -80}, len[3] = {9, 7.5f, 6.5f};   // tuy percemi
+    for (int i = 0; i < 3; i++) {
+      float bx = x + m * 5 * k, by = y - 15 * k, ex = bx + m * len[i] * k * cosf(ang[i] * 0.017453f), ey = by + len[i] * k * sinf(ang[i] * 0.017453f);
+      MV_POLY(P_WHITE, bx - m * 1.3f * k, by + 0.5f * k, bx + m * 1.3f * k, by + 0.8f * k, ex, ey);
+      S.drawLine(bx + m * 1.3f * k, by + 0.8f * k, ex, ey, P_GRAY);
+    }
+  }
+  const float exs[2] = {x - m * 5.2f * k, x + m * 5.0f * k}, eys[2] = {y - 7 * k, y - 7.6f * k}, ers[2] = {5.6f * k, 5.4f * k};
+  for (int i = 0; i < 2; i++) {                                    // gozler
+    S.fillCircle(exs[i], eys[i], ers[i] + 0.45f * k, P_ORANGE);
+    S.fillCircle(exs[i], eys[i], ers[i], P_WHITE);
+    if (k > 0.6f) S.drawCircle(exs[i], eys[i], ers[i] * 0.93f, P_GRAY);
+    if (mvDizzy) {                                                 // sersem: carpi goz
+      float r = ers[i] * 0.55f;
+      for (int d = 0; d < 2; d++) {
+        S.drawLine(exs[i] - r + d, eys[i] - r, exs[i] + r + d, eys[i] + r, P_PANEL);
+        S.drawLine(exs[i] + r + d, eys[i] - r, exs[i] - r + d, eys[i] + r, P_PANEL);
+      }
+    } else if (wink && i == 1) mvArc(exs[i], eys[i] - 0.5f * k, ers[i] * 0.7f, 20, 160, P_PANEL, 3);
+    else {
+      float px = exs[i] - m * 1.4f * k, py = eys[i] + 1.0f * k;
+      S.fillCircle(px, py, 1.9f * k, P_PANEL);
+      if (k > 0.6f) S.fillCircle(px + m * 0.6f * k, py - 0.7f * k, 0.55f * k, P_WHITE);
+    }
+  }
+  if (k > 0.5f) {                                                  // kaslar
+    mvArc(exs[0] + 0.3f * k, eys[0] - 0.3f * k, ers[0] + 2.2f * k, 215, 300, P_PANEL, 3);
+    mvArc(exs[1], eys[1] - 0.3f * k, ers[1] + 2.2f * k, 240, 325, P_PANEL, 3);
+  }
+  const float o = smile ? 1.0f : 0.35f;                            // gaga: agiz acikligi
+  MV_POLY(MV_MOUTH, x + m * 5 * k, y + 2 * k, x - m * 10 * k, y + 3 * k, x - m * 14 * k, y + 6.5f * k + 2.5f * k * o, x - m * 2 * k, y + 6.5f * k + 2.5f * k * o);
+  MV_POLY(P_ORANGE, x + m * 5 * k, y + 2 * k, x - m * 1 * k, y + 4 * k + 2 * k * o, x - m * 8 * k, y + 5.5f * k + 4 * k * o, x - m * 14.5f * k, y + 6.5f * k + 3 * k * o,
+          x - m * 15 * k, y + 8 * k + 3.5f * k * o, x - m * 8 * k, y + 8.5f * k + 4.5f * k * o, x, y + 7.5f * k + 3 * k * o, x + m * 5.5f * k, y + 4 * k);
+  MV_POLY(P_ORANGE, x + m * 4 * k, y - 1.5f * k, x - m * 4 * k, y - 2.8f * k, x - m * 13 * k, y - 1.5f * k, x - m * 19 * k, y + 1.5f * k,
+          x - m * 21.5f * k, y + 5 * k, x - m * 21 * k, y + 8.5f * k, x - m * 19.5f * k, y + 7.5f * k, x - m * 17 * k, y + 4.5f * k,
+          x - m * 10 * k, y + 2.8f * k, x - m * 1 * k, y + 3 * k, x + m * 5 * k, y + 1.5f * k);
+  if (k > 0.6f) {
+    S.drawLine(x - m * 15 * k, y + 1 * k, x - m * 14 * k, y + 1.4f * k, P_PANEL);       // burun deligi
+    S.drawLine(x - m * 20.5f * k, y + 5 * k, x - m * 19.5f * k, y + 7.3f * k, MV_MOUTH);   // kanca ucu golgesi
+  }
+  if (hit > 0) {                                                   // ekrana carpma: gaga ucunda isinsal cizgiler
+    float tx = x - m * 21 * k, ty = y + 9.5f * k, r0 = 2 * k, r1 = (3 + 5 * hit) * k;
+    for (int i = 0; i < 6; i++) { float an = i * 1.047f + 0.3f; S.drawLine(tx + cosf(an) * r0, ty + sinf(an) * r0, tx + cosf(an) * r1, ty + sinf(an) * r1, P_WHITE); }
+  }
+}
+// Turler: 0 gecis (yandan yana sessizce, ortada bakip gulumser + goz kirpar), 1 selam (yaklasir, gulumser,
+// goz kirpar, gider), 2 tik tik (yaklasir, gagasiyla cama 3 kez vurur), 3 karisik (yaklasir, onumuzde bir tur
+// atar, cama 2 kez vurur, goz kirpar, gider). Kendiliginden: agirlikli rastgele; web /marti: sirayla.
+static int mvMode = 0, mvDemo = 0;
+// Cam catlagi (carpma turu): carpma noktasindan isinsal kirik cizgiler + iki halka (orumcek agi). Mantiksal koordinat.
+static float ckX = 0, ckY = 0, ckPx[10][4], ckPy[10][4];
+static bool ckOn = false;
+static void crackMake(float cx, float cy) {
+  ckX = cx; ckY = cy; ckOn = true;
+  for (int i = 0; i < 10; i++) {
+    float a = i * 0.6283f + frand(-0.18f, 0.18f), r = 0;
+    for (int j = 0; j < 4; j++) {
+      r += frand(9, 20) + j * 6;
+      float aj = a + frand(-0.22f, 0.22f);
+      ckPx[i][j] = cx + cosf(aj) * r; ckPy[i][j] = cy + sinf(aj) * r * 0.85f;
+    }
+  }
+}
+static void crackDraw() {
+  if (!ckOn) return;
+  for (int i = 0; i < 10; i++) {                     // isinsal kiriklar
+    float px = ckX, py = ckY;
+    for (int j = 0; j < 4; j++) { S.drawLine(px, py, ckPx[i][j], ckPy[i][j], j < 2 ? P_WHITE : P_GRAY); px = ckPx[i][j]; py = ckPy[i][j]; }
+  }
+  for (int ring = 0; ring < 2; ring++)               // orumcek agi halkalari
+    for (int i = 0; i < 10; i++) { int n = (i + 1) % 10; S.drawLine(ckPx[i][ring], ckPy[i][ring], ckPx[n][ring], ckPy[n][ring], ring ? P_GRAY : P_WHITE); }
+  S.fillCircle(ckX, ckY, 2.5f, P_WHITE);            // carpma noktasi
+}
+static bool mvMir = false;
+static float mvDur = 0;
+static float mvPeckK(float h, float p0, int n, float& yOff, float& hit, int base) {   // tik: one atil, vur, geri cekil
+  float push = 0; hit = 0; yOff = 0;
+  for (int i = 0; i < n; i++) {
+    float u = (h - p0 - i * 0.55f) / 0.4f;
+    if (u >= 0 && u < 1) {
+      push = u < 0.45f ? u / 0.45f : 1 - (u - 0.45f) / 0.55f;
+      yOff = 6 * push;
+      if (u >= 0.4f && u < 0.75f) hit = 1 - (u - 0.4f) / 0.35f;
+      if (u >= 0.4f && mvPeck == base + i) { mvPeck = base + i + 1; sesCal(SES_TIK); }  // gaga camda: tik
+    }
+  }
+  return 1 + 0.32f * push;
+}
+static void updateVisitor(bool allowed, float dt) {
+  if (mvNext == 0) mvNext = frand(240, 540);
+  if (mvT < 0) {
+    if (dt > 0 && allowed) mvNext -= dt;
+    bool req = martiReq;
+    if (req || (allowed && mvNext <= 0)) {
+      martiReq = false; mvT = 0; mvPeck = 0; mvNext = frand(240, 540);
+      if (req) mvMode = (mvDemo++) % 5;
+      else { float r = frand(0, 1); mvMode = r < 0.42f ? 0 : r < 0.70f ? 1 : r < 0.86f ? 2 : r < 0.95f ? 3 : 4; }
+      ckOn = false; mvDizzy = false;
+      mvSavNavy = S.pal[MV_NAVY]; mvSavMouth = S.pal[MV_MOUTH];
+      S.setPaletteColor(MV_NAVY, c565(44, 56, 80)); S.setPaletteColor(MV_MOUTH, c565(200, 40, 40));
+      bool fromLeft = frand(0, 1) < 0.5f;
+      if (mvMode == 0) {                                  // gecis: ekranin bir yanindan obur yanina, orta derinlikte
+        mvSx = fromLeft ? -50 : SKY_W + 50; mvEx = fromLeft ? SKY_W + 50 : -50;
+        mvSy = frand(SKY_H * 0.2f, SKY_H * 0.32f); mvEy = mvSy + frand(-12, 12);
+        mvDur = 7.5f; mvMir = fromLeft;                   // saga ucarken gaga saga
+      } else {
+        mvSx = fromLeft ? frand(20, SKY_W * 0.35f) : frand(SKY_W * 0.65f, SKY_W - 20); mvSy = frand(18, 40);
+        mvTx = SKY_W / 2 + frand(-15, 15); mvTy = SKY_H * 0.30f;
+        mvEx = fromLeft ? SKY_W + 90 : -90; mvEy = frand(5, 25);
+        mvDur = mvMode == 4 ? 9.5f : MV_IN + (mvMode == 1 ? 3.0f : mvMode == 2 ? MV_HOLD : 7.0f) + MV_OUT;
+        mvMir = mvTx > mvSx;
+      }
+    }
+    return;
+  }
+  if (dt > 0) mvT += dt;
+  const float t = mvT;
+  if (t >= mvDur) { mvT = -1; ckOn = false; mvDizzy = false; S.setPaletteColor(MV_NAVY, mvSavNavy); S.setPaletteColor(MV_MOUTH, mvSavMouth); return; }
+  float x, y, k, hit = 0, yo = 0, flapRate = 5.5f;
+  bool smile = false, wink = false, mir = mvMir;
+  if (mvMode == 4) {                                      // carpma
+    const float TH = 2.4f, TS = TH + 0.9f;                // TH: carpma ani, TS: yapisik kalma sonu
+    if (t < TH) {                                         // giderek hizlanarak gelir
+      float a = t / TH; a = a * a * a;
+      x = mvSx + (mvTx - mvSx) * a; y = mvSy + (mvTy - mvSy) * a; k = 0.12f + (MV_K * 1.25f - 0.12f) * a;
+      flapRate = 9;
+    } else {
+      if (!ckOn) { crackMake(mvTx - (mvMir ? -1 : 1) * 21 * MV_K * 1.25f, mvTy + 9.5f * MV_K * 1.25f); sesCal(SES_TIK); sesCal(SES_TIK); }
+      mvDizzy = true; k = MV_K * 1.25f; x = mvTx;
+      if (t < TS) { y = mvTy; hit = 1 - (t - TH) / (TS - TH); flapRate = 0; }      // cama yapisik
+      else { float u = t - TS; y = mvTy + 30 * u * u; flapRate = 2; }             // asagi duser (yercekimi)
+    }
+  } else if (mvMode == 0) {                               // gecis
+    float a = t / mvDur;
+    x = mvSx + (mvEx - mvSx) * a; y = mvSy + (mvEy - mvSy) * a + sinf(t * 2.2f) * 3;
+    k = 0.85f + 0.25f * sinf(a * 3.1416f);                // ortada biraz daha yakin
+    smile = a > 0.35f && a < 0.7f; wink = a > 0.48f && a < 0.54f;
+    flapRate = 4.5f;
+  } else {
+    const float hold = mvDur - MV_IN - MV_OUT;
+    if (t < MV_IN) {                                      // yaklasir: kucukten iyice buyuge
+      float a = mvEase(t / MV_IN);
+      x = mvSx + (mvTx - mvSx) * a; y = mvSy + (mvTy - mvSy) * a; k = 0.12f + (MV_K - 0.12f) * a * a;
+      smile = a > 0.75f;
+    } else if (t < MV_IN + hold) {                        // yakinda
+      float h = t - MV_IN;
+      x = mvTx + sinf(h * 1.3f) * 2; y = mvTy + sinf(h * 2.0f) * 1.5f; k = MV_K; smile = true; flapRate = 1.8f;
+      if (mvMode == 1) wink = h > 1.2f && h < 1.7f;
+      else if (mvMode == 2) { wink = h > 1.0f && h < 1.5f; k = MV_K * mvPeckK(h, 2.0f, 3, yo, hit, 0); }
+      else {                                              // karisik: once onumuzde bir tur, sonra 2 tik, sonda goz kirpma
+        if (h < 3.0f) {
+          float ph = h / 3.0f * 6.2832f;
+          x = mvTx + sinf(ph) * SKY_W * 0.22f; y = mvTy + (1 - cosf(ph)) * 10;
+          k = MV_K * (0.75f + 0.25f * cosf(ph)); mir = cosf(ph) < 0 ? !mvMir : mvMir; flapRate = 5;
+        } else {
+          k = MV_K * mvPeckK(h, 3.4f, 2, yo, hit, 0);
+          wink = h > 5.2f && h < 5.7f;
+        }
+      }
+    } else {                                              // uzaklasir: kuculerek cikar, gidis yonune bakar
+      float a = mvEase((t - MV_IN - hold) / MV_OUT);
+      x = mvTx + (mvEx - mvTx) * a; y = mvTy + (mvEy - mvTy) * a; k = MV_K - (MV_K - 0.12f) * a;
+      smile = a < 0.25f; mir = mvEx > mvTx; flapRate = 6;
+    }
+  }
+  if (dt > 0) mvPh += dt * flapRate;
+  if (y < SKY_H + 80) drawVisitor(x, y + yo, k, sinf(mvPh), smile, wink, hit, mir);
+  if (mvDizzy && y < SKY_H + 60) for (int i = 0; i < 3; i++) {   // basinda donen yildizlar (martinin onunde)
+    float an = t * 4 + i * 2.094f, sx = x + cosf(an) * 13 * k * 0.5f, sy = y - 17 * k + sinf(an) * 3 * k;
+    S.drawLine(sx - 3, sy, sx + 3, sy, P_ORANGE); S.drawLine(sx, sy - 3, sx, sy + 3, P_ORANGE);
+    S.drawLine(sx - 2, sy - 2, sx + 2, sy + 2, P_WHITE); S.drawLine(sx + 2, sy - 2, sx - 2, sy + 2, P_WHITE);
+  }
+  crackDraw();
+}
+
 static void renderScene(Scene sc, bool day, float dt, float t, uint32_t now) {
   drawSky();
   bool openSky = (sc == SC_CLEAR || sc == SC_PARTLY);
@@ -791,8 +1096,18 @@ static void renderScene(Scene sc, bool day, float dt, float t, uint32_t now) {
     if (elev < 0 && moonPos(st, moonPhase(), x, y)) drawMoon(x, y, moonPhase());
   }
   drawHills(sc != SC_FOG);
+  // Martilar yalniz gunduz ve yagissiz (acik/parcali/kapali/sis) havada
+  const bool gullsOn = sunUp && (sc == SC_CLEAR || sc == SC_PARTLY || sc == SC_CLOUDY || sc == SC_FOG);
+  if (gullsOn) updateGulls(false, dt, t);
   if (sc == SC_FOG) drawFog(t);
   updateClouds(dt);
+  if (gullsOn) updateGulls(true, dt, t);
+  updateVisitor(gullsOn, dt);  // ziyaretci marti en onde
+  {  // marti sesleri: martilar gorunurken 1-3 dk'da bir (dt yalniz ilk seritte > 0)
+    static float callIn = 0;
+    if (callIn <= 0) callIn = frand(60, 180);
+    if (gullsOn && dt > 0 && (callIn -= dt) <= 0) { callIn = frand(60, 180); }  // kullanici istegi: marti sesi kapali (SES_MARTI duruyor)
+  }
   if (sc == SC_THUNDER) updateLightning(now);
   if (dropCount) updatePrecip(sc, dt, t);
   frameNo++;

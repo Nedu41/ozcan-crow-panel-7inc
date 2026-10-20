@@ -100,30 +100,48 @@ static void setNewsState(const String& s) {
 // BUGFIX: eskiden tum RSS (dun 15KB, bugun 21.7KB) getString() ile tek parca
 // bellege aliniyordu. Ekran sprite'lari + TLS'den sonra o buyuklukte blok
 // kalmayinca yanit bos geliyor, kod da LOG YAZMADAN vazgeciyordu ("Haberler
-// yukleniyor" takili kaliyordu). Simdi akis halinde okunup ilk NEWS_MAX_ITEMS
+// yukleniyor" takili kaliyordu). Simdi akis halinde okunup ilk maxItems
 // baslik bulununca baglanti kesiliyor (~1KB bellek).
-bool fetchNews() {
-  if (WiFi.status() != WL_CONNECTED) { setNewsState("WiFi yok"); return false; }
+
+// Ayni olay birden cok kaynaktan gelir (Google Haberler): 5+ harfli kelimelerden 3'u daha once
+// alinmis bir baslikta varsa tekrar sayilir.
+static bool similarTitle(const String& t, const String* kept, int n) {
+  for (int k = 0; k < n; k++) {
+    int common = 0, i = 0;
+    while (i < (int)t.length()) {
+      int j = t.indexOf(' ', i);
+      if (j < 0) j = t.length();
+      String w = t.substring(i, j);
+      if (w.length() >= 5 && kept[k].indexOf(w) >= 0 && ++common >= 3) return true;
+      i = j + 1;
+    }
+  }
+  return false;
+}
+
+// RSS'ten ilk maxItems basligi " +++ " ile birlestirip text'e ekler. stripSource: Google Haberler
+// basliginin sonundaki " - Kaynak" atilir. Donus: alinan baslik sayisi, hata -> -1 (err doldurulur).
+static int readRss(const char* url, int maxItems, bool stripSource, String& text, String& err) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(5000);
   http.useHTTP10(true);  // chunked kodlama olmasin - ham akista parca boyutlari araya girmesin
   http.setUserAgent("MerkeziHUB/1.0");  // addHeader("User-Agent") ESP32'de yok sayiliyor
-  if (!http.begin(client, NEWS_RSS_URL)) { setNewsState("begin basarisiz"); return false; }
+  if (!http.begin(client, url)) { err = "begin basarisiz"; return -1; }
   int code = http.GET();
   if (code != HTTP_CODE_OK) {
-    setNewsState("HTTP " + String(code) + (code < 0 ? " " + http.errorToString(code) : ""));
+    err = "HTTP " + String(code) + (code < 0 ? " " + http.errorToString(code) : "");
     http.end();
-    return false;
+    return -1;
   }
 
   WiFiClient* s = http.getStreamPtr();
-  String text, title, win;
+  String title, win, kept[8];
   bool inItem = false, inTitle = false;
-  int count = 0;
+  int count = 0, seen = 0;
   unsigned long deadline = millis() + 8000;
-  while (count < NEWS_MAX_ITEMS && millis() < deadline && (s->connected() || s->available())) {
+  while (count < maxItems && count < 8 && seen < 30 && millis() < deadline && (s->connected() || s->available())) {
     if (!s->available()) { delay(5); continue; }
     char ch = (char)s->read();
     if (inTitle) {
@@ -133,11 +151,13 @@ bool fetchNews() {
         title.replace("<![CDATA[", "");
         title.replace("]]>", "");
         title = fontSafe(decodeEntities(title));
+        if (stripSource) { int d = title.lastIndexOf(" - "); if (d > 10) title.remove(d); }
         title.trim();
-        if (title.length()) {
+        seen++;
+        if (title.length() && !similarTitle(title, kept, count)) {
           if (text.length()) text += "     +++     ";
           text += title;
-          count++;
+          kept[count++] = title;
         }
         inTitle = false;
         inItem = false;  // haber basina sadece ilk <title>
@@ -154,8 +174,24 @@ bool fetchNews() {
     else if (inItem && win.endsWith("<title>")) { inTitle = true; title = ""; }
   }
   http.end();
+  if (!count) err = "baslik bulunamadi (bos heap " + String(ESP.getFreeHeap()) + ")";
+  return count;
+}
 
-  if (!count) { setNewsState("baslik bulunamadi (bos heap " + String(ESP.getFreeHeap()) + ")"); return false; }
+// Alt yazi: AA dunya basliklari + "KOCAELI:" etiketiyle bolgenin one cikan haberleri (Google Haberler
+// "Kocaeli" aramasi - bircok kaynaktan, onemli olanlar ustte). Biri basarisizsa digeri yine gosterilir.
+bool fetchNews() {
+  if (WiFi.status() != WL_CONNECTED) { setNewsState("WiFi yok"); return false; }
+  String world, local, errW, errL;
+  int nW = readRss(NEWS_RSS_URL, NEWS_MAX_ITEMS, false, world, errW);
+  int nL = readRss(NEWS_LOCAL_RSS_URL, NEWS_LOCAL_ITEMS, true, local, errL);
+  if (nW <= 0 && nL <= 0) { setNewsState("dunya: " + errW + " | kocaeli: " + errL); return false; }
+  String text = world;
+  if (nL > 0) {                                    // 4'lu haber sayfasi " +++ " ile boler: her yerel basliga onek
+    String loc = "Kocaeli: " + local;
+    loc.replace("     +++     ", "     +++     Kocaeli: ");
+    text += String(text.length() ? "     +++     " : "") + loc;
+  }
   if (xSemaphoreTake(newsMutex, MUTEX_TIMEOUT) == pdTRUE) {
     NEWS_TICKER_TEXT = text;
     xSemaphoreGive(newsMutex);
@@ -163,7 +199,8 @@ bool fetchNews() {
   struct tm t;
   char ts[6] = "--:--";
   if (getLocalTime(&t, 0)) strftime(ts, sizeof(ts), "%H:%M", &t);
-  setNewsState("OK " + String(count) + " baslik " + ts);
-  return true;
+  setNewsState("OK dunya " + String(max(nW, 0)) + ", kocaeli " + String(max(nL, 0)) + " baslik " + ts +
+               (nW <= 0 ? " (dunya: " + errW + ")" : "") + (nL <= 0 ? " (kocaeli: " + errL + ")" : ""));
+  return nW > 0;  // dunya basarisizsa 30 sn'de bir tekrar denensin
 }
 
