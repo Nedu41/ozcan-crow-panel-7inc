@@ -1066,6 +1066,40 @@ static void updateVisitor(bool allowed, float dt) {
   crackDraw();
 }
 
+// Sag kenarda agac (tepelerle ayni koyu siluet): ruzgar arttikca ruzgar altina egilir, daha hizli/genis sallanir,
+// yaprak kumeleri ayri ayri titrer. Govde boyunca egilme h^2 ile artar (dip sabit). ev-lamba ile ayni (onizleme: ev-lamba tools/agac_sim.py).
+static void drawTree(float dt, float t) {
+  static float tw = -1;
+  float w = wv.ok ? wv.wind : 0;
+  if (tw < 0) tw = w;
+  tw += (w - tw) * min(1.0f, dt * 0.5f);              // ruzgar degisince birden degil yavasca
+  const float k = constrain(tw / 60.0f, 0.0f, 1.0f);  // 60 km/s ve ustu en siddetli
+  const float amp = 0.03f + 0.22f * k, f = 0.30f + 0.80f * k;
+  const float sw = -0.35f * k + amp * (sinf(t * f * 6.283f) + 0.35f * sinf(t * f * 2.7f * 6.283f + 1.3f)) / 1.35f;
+  const int bx = SKY_W - 28, by = HORIZON_Y - hillH[bx] + 2;
+  const float H = 40;
+  auto X = [&](float h) { return bx + sw * H * h * h; };
+  auto Y = [&](float h) { return by - H * h; };
+  float px[10], py[10];
+  for (int i = 0; i < 5; i++) {
+    float h = i * 0.25f, hw = 4.2f - 2.8f * h;
+    px[i] = X(h) - hw; py[i] = Y(h);
+    px[9 - i] = X(h) + hw; py[9 - i] = Y(h);
+  }
+  mvPoly(px, py, 10, P_BG);
+  static const int8_t CL[8][4] = {{75, -15, 4, 8}, {80, 14, 4, 8}, {95, -7, -5, 10}, {100, 8, -3, 10},
+                                  {70, -3, 8, 8}, {108, 0, -10, 8}, {88, -19, -2, 6}, {90, 19, 0, 6}};
+  for (int i = 0; i < 8; i++) {
+    float h = CL[i][0] / 100.0f, fl = (0.6f + 2.5f * k) * sinf(t * f * 1.7f * 6.283f + i * 1.9f);
+    float cx = X(h) + CL[i][1] + sw * 8 * h + fl, cy = Y(h) + CL[i][2] + 0.4f * fl;
+    if (abs(CL[i][1]) > 5) {
+      S.drawLine(X(h * 0.75f), Y(h * 0.75f), cx, cy, P_BG);
+      S.drawLine(X(h * 0.75f) + 1, Y(h * 0.75f), cx + 1, cy, P_BG);
+    }
+    S.fillCircle(cx, cy, CL[i][3], P_BG);
+  }
+}
+
 static void renderScene(Scene sc, bool day, float dt, float t, uint32_t now) {
   drawSky();
   bool openSky = (sc == SC_CLEAR || sc == SC_PARTLY);
@@ -1099,6 +1133,7 @@ static void renderScene(Scene sc, bool day, float dt, float t, uint32_t now) {
   // Martilar yalniz gunduz ve yagissiz (acik/parcali/kapali/sis) havada
   const bool gullsOn = sunUp && (sc == SC_CLEAR || sc == SC_PARTLY || sc == SC_CLOUDY || sc == SC_FOG);
   if (gullsOn) updateGulls(false, dt, t);
+  drawTree(dt, t);
   if (sc == SC_FOG) drawFog(t);
   updateClouds(dt);
   if (gullsOn) updateGulls(true, dt, t);
