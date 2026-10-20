@@ -639,6 +639,7 @@ input.invalid { border-color: #cf6679 !important; background: #3a1f24 !important
   <a href="/wifi" id="nav6" onclick="route('/wifi');return false;">WiFi</a>
   <a href="/log" id="nav4" onclick="route('/log');return false;">Kayıt</a>
   <a href="/notes" id="nav5" onclick="route('/notes');return false;">Notlar</a>
+  <a href="/info" id="nav10" onclick="route('/info');return false;">Donanım</a>
 </div>
 
 <div id="alertbar"></div>
@@ -2225,11 +2226,116 @@ function sysTg() {
     fetch("/api/telegram?token=" + encodeURIComponent(t) + "&chat=" + encodeURIComponent(c)).then(() => { toast("✓ Telegram kaydedildi"); document.getElementById("tgTok").value = ""; renderSistem(); });
 }
 
+// --- Donanim sayfasi icerigi: CrowPanel 7" HUB ---
+const HW_FEATURES = [
+    ["Dokunmatik ekran", "7\" 800×480 ekranda Ana (saat, hava, haber), Lambalar ve Ayar sayfaları; yatay / dikey kullanım."],
+    ["WiFi kurulumu", "Bilgisayarsız: ekrandan ağ tara, seç, ekran klavyesiyle şifre gir. Bağlanamazsa kurulum ekranına döner; kayıtlı ağlar sırayla denenir."],
+    ["Lamba / röle kontrolü", "ESP-01S röle düğümleri ve 4 kanallı LC röle modülü; ekrandan ve web'den aç/kapa, düğüm başına zamanlayıcı."],
+    ["Otomasyon", "Gün doğumu / batımında, sabit saatte ya da hava kararınca lambaları açıp kapatır; rüzgar uyarısı."],
+    ["Hava durumu", "Open-Meteo: sıcaklık, rüzgar, nem, 7 günlük tahmin; ekranda saate ve havaya göre canlı gökyüzü."],
+    ["Uyarılar", "Hava (fırtına, kuvvetli rüzgar, yoğun yağış) ve deprem (AFAD) uyarı bandı."],
+    ["Haberler", "Ekranın altında kayan haber şeridi."],
+    ["Yazılım güncelleme", "Sistem sekmesinden GitHub'dan güncelleme; geliştirmede OTA."],
+    ["Telegram", "Bot ve sohbet kimliği Ayar sayfasından girilir; açılış ve uyarı bildirimleri."],
+    ["Diğer", "Notlar, olay kaydı, parlaklık / kontrast / canlılık ayarı, röle düğümleri için web'den firmware yükleyici, MQTT."],
+];
+const HW_USAGE = [
+    "İlk açılış: ekranda WiFi ağını seç, ekran klavyesiyle şifreyi gir.",
+    "Web arayüzü: aynı ağdan <b>http://crowhub.local</b> (ya da ekranda görünen IP).",
+    "Konum ve Telegram: ekranda <b>Ayar</b> sayfasından ya da web'de <b>Oto-Hava</b> / <b>Sistem</b> sekmelerinden.",
+    "Lambalar: <b>Cihazlar</b> sekmesinden röle düğümlerini ekle; ekranda <b>Lambalar</b> sayfasından kontrol et.",
+    "Ekran ayarları ve güncelleme: web'de <b>Sistem</b> sekmesi.",
+];
+const HW_CHANGELOG = [
+    ["7.4.0", "2026-10-20", ["Donanım sayfası: özellikler, kullanım, sürüm geçmişi, kart bilgisi, canlı durum"]],
+    ["7.3.0", "2026-10-14", ["Yapay zeka efektleri kaldırıldı (flash %92)", "4 röleli düğüm desteği (2×2 lamba kartı, 4 röle zamanlayıcı)", "Cihazlar sayfasında Firmware Yükle bağlantısı"]],
+    ["7.2.1", "2026-10-13", ["Röle düğümleri için 8 kart firmware'i ve hazır imajlar", "GitHub'dan güncelleme uçtan uca denendi", "Yayın imajlarından kişisel bilgiler temizlendi"]],
+    ["Önceki", "2026-10-13", ["Canlı gökyüzü, hava kutuları, 7 günlük tahmin, kayan haber şeridi, nem", "Lambalar kompakt kartlar, kontrast / canlılık ayarı, uyarı bandı, kayıtlı WiFi ağları"]],
+    ["7.0.0", "2026-10-12", ["ev-lamba Merkezi HUB arka ucu + LVGL dokunmatik arayüz (Ana / Lambalar / Ayar)", "Dokunmatik WiFi kurulumu; Telegram ve hava konumu ekrandan"]],
+];
+const HW_ROWS = [
+    ["Kart", "Elecrow CrowPanel ESP32 HMI 7\" Basic, SKU DIS08070H, V3.0", "Ö"],
+    ["Çip", "ESP32-S3 (QFN56) rev v0.2, 8 MB gömülü PSRAM", "Ö"],
+    ["Flaş", "4 MB quad", "Ö"],
+    ["Ekran", "800×480 RGB565 paralel, arka ışık IO2", "Ö"],
+    ["Dokunmatik", "GT911 0x5D (I2C IO19/IO20), PCA9557 0x18 üzerinden RST/INT", "B"],
+    ["Hoparlör", "I2S: SDIN IO17, LRCLK IO18, BCLK IO42 (kullanılmıyor)", "B"],
+    ["Diğer", "TF kart yuvası (SPI IO10-13), USB-C (CH340, UART0)", "B"],
+    ["Röle düğümleri", "ESP-01S / LC-ESP01-4R-12V — HTTP komut + UDP durum", "Ö"],
+];
+// --- DONANIM SAYFASI (ortak): ozellikler, kullanim, surum gecmisi, kart/modul tablosu, canli durum (/hw_info).
+// Projeye ozel icerik: HW_FEATURES, HW_USAGE, HW_CHANGELOG, HW_ROWS (bu blogun ustunde).
+// Ses karti yalniz /hw_info "ses_on" bildirirse, dokunmatik satiri yalniz "touch" bildirirse gorunur.
+const RESET_TXT = {1:"güç verildi", 3:"yazılım", 4:"çökme (panic)", 5:"kesme bekçisi", 6:"görev bekçisi", 7:"bekçi", 8:"uyku", 9:"düşük gerilim"};
+let infoTimer = null;
+
+function renderInfo() {
+    const feats = HW_FEATURES.map(f => `<li style="margin-bottom:6px"><b style="color:#03dac6">${f[0]}</b> — ${escHtml(f[1])}</li>`).join('');
+    const usage = HW_USAGE.map(u => `<li style="margin-bottom:6px">${u}</li>`).join('');
+    const changes = HW_CHANGELOG.map(([v, d, items]) => `<div style="margin-bottom:10px"><b style="color:#ff9800">${/^\d/.test(v) ? 'v' + v : v}</b>
+        <small style="color:#888">${d}</small><ul style="padding-left:18px;margin:4px 0 0">${items.map(x => `<li>${escHtml(x)}</li>`).join('')}</ul></div>`).join('');
+    const rows = HW_ROWS.map(r => `<tr><td style="color:#888;padding:4px 8px 4px 0;white-space:nowrap">${r[0]}</td>
+        <td style="padding:4px 0">${escHtml(r[1])} <small style="color:${r[2]==='Ö'?'#03dac6':'#ff9800'}">[${r[2]}]</small></td></tr>`).join('');
+    document.getElementById("content").innerHTML = `
+    <div class="settings-container"><h3>✨ Özellikler</h3>
+        <ul style="padding-left:18px;margin:0;font-size:14px;line-height:1.45">${feats}</ul></div>
+    <div class="settings-container"><h3>📖 Kullanım</h3>
+        <ol style="padding-left:18px;margin:0;font-size:14px;line-height:1.45">${usage}</ol></div>
+    <div class="settings-container"><h3>📝 Sürüm geçmişi</h3>
+        <div style="font-size:14px;line-height:1.45">${changes}</div></div>
+    <div class="settings-container"><h3>📟 Kart ve modüller</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">${rows}</table>
+        <small style="color:#888">[Ö] kartta ölçüldü · [B] belgeden, kartta doğrulanmadı</small></div>
+    <div class="settings-container"><h3>📊 Canlı durum</h3>
+        <div id="hwLive" style="font-size:14px;line-height:1.7">Yükleniyor...</div></div>
+    <div class="settings-container" id="sesCard" style="display:none"><h3>🔊 Ses</h3>
+        <label><input type="checkbox" id="sesOn" onchange="sesSet('on', this.checked?1:0)"> Ses açık</label><br>
+        <label><input type="checkbox" id="sesAcl" onchange="sesSet('acl', this.checked?1:0)"> Açılış melodisi</label><br>
+        <label>Seviye <input type="range" id="sesLv" min="1" max="10" onchange="sesSet('lv', this.value)"> <span id="sesLvT"></span></label><br>
+        <button class="btn" style="flex-grow:0;margin-top:8px" onclick="sesSet('test',1)">Deneme sesi</button></div>`;
+    loadHw(true);
+    if (infoTimer) clearInterval(infoTimer);
+    infoTimer = setInterval(() => { if (location.pathname === "/info") loadHw(false); else { clearInterval(infoTimer); infoTimer = null; } }, 5000);
+}
+
+function loadHw(first) {
+    fetch("/hw_info").then(r => r.json()).then(d => {
+        const kb = v => (v / 1024).toFixed(0) + " KB", mb = v => (v / 1048576).toFixed(1) + " MB";
+        const up = d.uptime, upTxt = `${Math.floor(up/86400)}g ${Math.floor(up%86400/3600)}s ${Math.floor(up%3600/60)}dk`;
+        const dot = ok => `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${ok?'#4caf50':'#cf3030'};box-shadow:0 0 6px ${ok?'#4caf50':'#cf3030'}"></span>`;
+        document.getElementById("hwLive").innerHTML = `
+            Çip: ${escHtml(d.chip)} rev ${d.rev}, ${d.cores} çekirdek, ${d.mhz} MHz<br>
+            Flaş: ${mb(d.flash)} · PSRAM: ${d.psram ? mb(d.psram) + (d.psram_free != null ? " (boş " + mb(d.psram_free) + ")" : "") : "yok"}<br>
+            Uygulama: ${kb(d.sketch)} (boş yuva ${kb(d.sketch_free)})<br>
+            Bellek: boş ${kb(d.heap)} · en büyük blok ${kb(d.heap_blk)} · en düşük ${kb(d.heap_min)}<br>
+            Çalışma: ${upTxt} · son açılış: ${RESET_TXT[d.reset] || d.reset}<br>
+            WiFi: ${escHtml(d.mac)} · ${d.rssi} dBm<br>
+            ${d.touch !== undefined ? `Dokunmatik: ${dot(d.touch)}${d.touch ? "GT911 0x" + d.touch.toString(16).toUpperCase() : "bulunamadı"}<br>` : ''}
+            Sürüm: ${escHtml(d.fw)} · SDK ${escHtml(d.sdk)}`;
+        if (first && d.ses_on !== undefined) {
+            document.getElementById("sesCard").style.display = "";
+            document.getElementById("sesOn").checked = d.ses_on;
+            document.getElementById("sesAcl").checked = d.ses_acl;
+            document.getElementById("sesLv").value = d.ses_lv;
+            document.getElementById("sesLvT").textContent = d.ses_lv;
+        }
+    }).catch(() => { document.getElementById("hwLive").textContent = "✗ Bilgi alınamadı"; });
+}
+
+function sesSet(k, v) {
+    fetch(`/ses?${k}=${v}`).then(r => r.json()).then(j => {
+        if (k === 'lv') document.getElementById("sesLvT").textContent = j.lv;
+        if (k !== 'test') toast("✓ Ses ayarı kaydedildi");
+    }).catch(() => toast("✗ Ses ayarı gönderilemedi", true));
+}
+
 // --- NAVİGASYON ---
 function navigate() {
     const p = location.pathname;
     document.querySelectorAll('.nav a').forEach(a => a.className = (a.getAttribute('href') === p || (p === '/device' && a.getAttribute('href') === '/settings')) ? 'active' : '');
-    if(p === "/settings") {
+    if(p === "/info") {
+        renderInfo();
+    } else if(p === "/settings") {
         fetchDevices().then(renderSettings);
     } else if(p === "/log") {
         renderEvents();

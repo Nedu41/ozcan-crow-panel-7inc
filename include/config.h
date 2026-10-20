@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Web arayuzu basliginda ve TFT ust seridinde gosterilir - tek kaynak burasi
-#define FW_VERSION "7.3.0-crow"
+#define FW_VERSION "7.4.0-crow"  // artirinca web Donanim > Surum gecmisi (HW_CHANGELOG) guncellenir
 
 // ---- Donanim ----
 // Pinler: board.h / docs/DONANIM.md

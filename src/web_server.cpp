@@ -15,6 +15,8 @@
 #include "wifi_nets.h"
 #include "alerts.h"
 #include "relay_webpage_multi.h"
+#include <esp_chip_info.h>
+#include <esp_system.h>
 
 static volatile unsigned long restartAt = 0;  // 0 = yok; webLoop() zamani gelince yeniden baslatir
 
@@ -680,6 +682,34 @@ void setupWebServer() {
   server.on("/log", AsyncWebRequestMethod::HTTP_GET, handleRoot);
   server.on("/device", AsyncWebRequestMethod::HTTP_GET, handleRoot);
   server.on("/notes", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  server.on("/info", AsyncWebRequestMethod::HTTP_GET, handleRoot);
+  // Donanim sayfasi: canli cip/bellek bilgisi (sabit kart/modul tablosu sayfanin kendisinde)
+  server.on("/hw_info", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
+    esp_chip_info_t ci;
+    esp_chip_info(&ci);
+    JsonDocument d;
+    d["chip"] = ESP.getChipModel();
+    d["rev"] = ci.revision;
+    d["cores"] = ci.cores;
+    d["mhz"] = ESP.getCpuFreqMHz();
+    d["flash"] = ESP.getFlashChipSize();
+    d["psram"] = ESP.getPsramSize();
+    if (ESP.getPsramSize()) d["psram_free"] = ESP.getFreePsram();
+    d["sketch"] = ESP.getSketchSize();
+    d["sketch_free"] = ESP.getFreeSketchSpace();
+    d["heap"] = ESP.getFreeHeap();
+    d["heap_min"] = ESP.getMinFreeHeap();
+    d["heap_blk"] = ESP.getMaxAllocHeap();
+    d["uptime"] = millis() / 1000;
+    d["reset"] = (int)esp_reset_reason();
+    d["mac"] = WiFi.macAddress();
+    d["rssi"] = WiFi.RSSI();
+    d["fw"] = FW_VERSION;
+    d["sdk"] = ESP.getSdkVersion();
+    String out;
+    serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
   server.on("/get_notes", AsyncWebRequestMethod::HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "application/json", readNotes());
   });
