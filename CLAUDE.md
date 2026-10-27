@@ -55,6 +55,7 @@ Yukleme: ana sayfa yavasken OTA %10'da takiliyor -> USB (COM3) ile yukle: `pio r
 - **Yukleyici sitesi** ev-lamba projesinde: `C:\Kodlar\ev-lamba\yukleyici\` (model adlariyla cihaz listesi: CrowPanel 7", ESP32+ILI9341 TFT, ESP-01/07, NodeMCU, D1 mini, Sonoff, ESP32, C3, S3; COM port secimi aciklamasi). `C:\Kodlar\esp-firmware-yukleyici` eski yerel kopya (artik gereksiz, silinebilir). ev-lamba commit'leri YEREL, push edilmedi (deposunda ayrica 35 gonderilmemis commit var). ev-lamba GitHub deposu zaten HERKESE ACIK.
 - **ev-lamba acik depo temizlendi (2026-10-14):** kaynaktaki kisisel varsayilanlar (MQTT `evhub/`, genel konum, demo metinleri, e-posta) degistirildi; commit gecmisi yeniden yazildi (kimlik noreply) ve GitHub'a force-push edildi. Eski gecmis yedegi `C:\Kodlar\yedek\ev-lamba-oncesi.bundle` (kisisel bilgi icerir, gereksizse sil). Tum projeler artik `C:\Kodlar` altinda.
 
-## Bekleyen (2026-10-20)
-- v7.4.0 (web Donanım sayfası) derlendi, cihaza gönderilmedi (cihaz Özcan abide; OTA / GitHub release ile).
-- HUB35 / ev-lamba'da eklenenler buraya da istenecek: hatırlatma (günde 1-6 kez, düzenleme), mutfak yumurta timer'ı, Kocaeli haberleri, nem, gökyüzünde martılar (HUB35 display.cpp updateGulls; burada sky.cpp). Not: ekran LVGL (mutfak görünümü yeniden yazılmalı), ses I2S (GPIO26 ses modülü uymaz). Kaynak: `C:\Kodlar\ESP32-3248S035` (reminders.cpp, mutfak.cpp, relay_webpage_multi.h).
+## Durum / Bekleyen (2026-10-27)
+- **v7.5.0** derlendi + commit'li: Hatırlatma (günde 1-6), Mutfak (yumurta timer'ı), Kocaeli haberleri, I2S ses, gökyüzünde martılar + maskot, rüzgâra göre sallanan ağaç. Cihaza gönderilmedi (cihaz Özcan abide; OTA / GitHub release ile).
+- **Doğrulanmadı:** I2S ses (pinler belgeden: SDIN17 LRCLK18 BCLK42; kartta denenmedi). Nem göstergesi HUB35'ten henüz taşınmadı. Mutfak ekranı LVGL'de yok, yalnız web sekmesi var.
+- Kaynak (HUB35): `C:\Kodlar\ESP32-3248S035` (reminders.cpp, mutfak.cpp, relay_webpage_multi.h).
